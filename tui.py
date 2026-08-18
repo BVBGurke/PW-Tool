@@ -7,6 +7,7 @@ Supports non-blocking GPU computation using threading.
 
 import time
 import threading
+from dataclasses import dataclass
 from typing import Optional, Callable, Any
 from datetime import datetime
 
@@ -25,10 +26,21 @@ from system_mix import SystemMixStatus
 from profiles import ProfileOption, SessionProfiles
 
 
+@dataclass(frozen=True)
+class GenerationUiConfig:
+    """Einmalig erfasste Einstellungen für alle Wiederholungen der Sitzung."""
+
+    password_length: int
+    charset: CharacterSet
+    system_mix_enabled: bool
+    overkill: bool
+    password_count: int
+
+
 class RichUI:
     """Terminal UI for password generation with Rich library."""
 
-    def __init__(self, cuda_available: bool, device_name: str = ""):
+    def __init__(self, cuda_available: bool, device_name: str = "", console: Optional[Console] = None):
         """
         Initialize Rich UI.
         
@@ -41,13 +53,18 @@ class RichUI:
                 "Rich library not installed. Install with: pip install rich"
             )
         
-        self.console = Console()
+        self.console = console or Console()
         self.cuda_available = cuda_available
         self.device_name = device_name
         self.computation_thread = None
         self.computation_result = None
         self.computation_error = None
         self.computation_time = 0.0
+
+    @property
+    def is_compact(self) -> bool:
+        """Erkennt schmale Terminalfenster, etwa mobile Termux-Sitzungen."""
+        return self.console.size.width < 72
 
     def show_header(self) -> None:
         """Display application header with system status."""
@@ -57,51 +74,62 @@ class RichUI:
         device_info = f"Gerät: {self.device_name}" if self.device_name else "Nur CPU"
         
         self.console.print()
-        self.console.print(
-            Panel(
-                f"{header_text}\n{status}\n{device_info}",
-                style="bold cyan",
-                expand=False
+        if self.is_compact:
+            self.console.print(f"[bold cyan]{header_text}[/bold cyan]")
+            self.console.print(f"{status} · {device_info}")
+        else:
+            self.console.print(
+                Panel(
+                    f"{header_text}\n{status}\n{device_info}",
+                    style="bold cyan",
+                    expand=False,
+                )
             )
-        )
         self.console.print()
 
     def get_session_profiles(self) -> SessionProfiles:
-        """Zeigt wirksame Beta-Optionen; Enter startet mit der aktuellen Wahl."""
-        profiles = SessionProfiles()
-        descriptions = {
-            ProfileOption.GPU_FIRST: "CUDA als Kandidat prüfen; sicherer CPU-Fallback bleibt aktiv",
-            ProfileOption.BENCHMARK_METRICS: "zusätzliche, nicht sensitive Phasenzeiten anzeigen",
-        }
-        self.console.print("[bold]Beta-Optionen (Nummern umschalten; Enter startet):[/bold]")
-        while True:
-            table = Table(show_header=True)
-            table.add_column("Nr.", style="cyan", width=5)
-            table.add_column("Aktiv", width=8)
-            table.add_column("Profil")
-            for option in ProfileOption:
-                active = "Ja" if profiles.is_enabled(option) else "Nein"
-                table.add_row(option.value, active, descriptions[option])
-            self.console.print(table)
-            choice = Prompt.ask("Optionsnummern", default="", console=self.console).strip()
-            if not choice:
-                return profiles
-            try:
-                profiles.toggle(choice)
-            except ValueError as error:
-                self.console.print(f"[red]{error}[/red]")
+        """Erfasst die wirksamen Beta-Optionen genau einmal pro Sitzung."""
+        self.console.print("[bold]Beta-Optionen (einmalig):[/bold]")
+        self.console.print("  1 – CUDA als Kandidat prüfen; sicherer CPU-Fallback bleibt aktiv")
+        self.console.print("  2 – zusätzliche, nicht sensitive Phasenzeiten anzeigen")
+        choice = Prompt.ask(
+            "Aktive Optionen (z. B. 1 2; Enter = 1)",
+            default="",
+            console=self.console,
+        ).strip()
+        try:
+            return SessionProfiles.from_selection(choice)
+        except ValueError as error:
+            self.console.print(f"[yellow]{error} Standardoption 1 wird verwendet.[/yellow]")
+            return SessionProfiles()
+
+    def get_generation_config(self) -> GenerationUiConfig:
+        """Fragt alle Generierungseinstellungen einmalig ab und fixiert sie für die Sitzung."""
+        self.console.print("[bold]Generierungseinstellungen (einmalig):[/bold]")
+        return GenerationUiConfig(
+            password_length=self.get_password_length(),
+            charset=self.get_character_set(),
+            system_mix_enabled=self.get_system_mix_enabled(),
+            overkill=self.get_overkill_mode(),
+            password_count=self.get_batch_count(),
+        )
 
     def show_backend_decision(self, backend: str, reason: str, logging_enabled: bool) -> None:
         """Zeigt die sichere Backendentscheidung ohne Messgeheimnisse."""
         logging = "Diagnoselog aktiv" if logging_enabled else "Kein Diagnoselog"
-        self.console.print(
-            Panel(
-                f"Backend: {backend.upper()}\n{reason}\n{logging}",
-                title="Ausführungsentscheidung",
-                style="bold green" if backend == "cuda" else "bold cyan",
-                expand=False,
+        if self.is_compact:
+            self.console.print(f"[bold]Backend:[/bold] {backend.upper()}")
+            self.console.print(f"[dim]{reason}[/dim]")
+            self.console.print(f"[dim]{logging}[/dim]")
+        else:
+            self.console.print(
+                Panel(
+                    f"Backend: {backend.upper()}\n{reason}\n{logging}",
+                    title="Ausführungsentscheidung",
+                    style="bold green" if backend == "cuda" else "bold cyan",
+                    expand=False,
+                )
             )
-        )
 
     def get_password_length(self) -> int:
         """
@@ -261,17 +289,19 @@ class RichUI:
             execution_mode: "GPU" or "CPU" (for display)
         """
         self.console.print()
-        
-        # Create table
-        table = Table(title="Generierte Passwörter", show_header=True)
-        table.add_column("#", style="cyan", width=5)
-        table.add_column("Passwort", style="bold green")
-        
-        for idx, pwd in enumerate(passwords, 1):
-            table.add_row(str(idx), pwd)
+        if self.is_compact:
+            self.console.print("[bold]Generierte Passwörter:[/bold]")
+            for idx, pwd in enumerate(passwords, 1):
+                # Falten statt Ellipse: Jedes Passwortzeichen bleibt sichtbar.
+                self.console.print(f"{idx}: {pwd}", style="bold green", overflow="fold")
+        else:
+            table = Table(title="Generierte Passwörter", show_header=True)
+            table.add_column("#", style="cyan", width=5)
+            table.add_column("Passwort", style="bold green", overflow="fold")
+            for idx, pwd in enumerate(passwords, 1):
+                table.add_row(str(idx), pwd)
+            self.console.print(table)
 
-        self.console.print(table)
-        
         # Summary
         self.console.print()
         summary = f"[cyan]{len(passwords)} Passwort/Passwörter in {self.computation_time:.2f}s erzeugt ({execution_mode})[/cyan]"
@@ -300,14 +330,17 @@ class RichUI:
             message: Error details
         """
         self.console.print()
-        self.console.print(
-            Panel(
-                message,
-                title=f"❌ {title}",
-                style="bold red",
-                expand=False
+        if self.is_compact:
+            self.console.print(f"[bold red]{title}:[/bold red] {message}", overflow="fold")
+        else:
+            self.console.print(
+                Panel(
+                    message,
+                    title=title,
+                    style="bold red",
+                    expand=False,
+                )
             )
-        )
         self.console.print()
 
     def show_fallback_notice(self) -> None:
@@ -331,7 +364,7 @@ class RichUI:
         """
         self.console.print()
         return Confirm.ask(
-            "[bold]Generate another?[/bold]",
+            "[bold]Mit derselben Konfiguration erneut erzeugen?[/bold]",
             default=False,
             console=self.console
         )
@@ -339,11 +372,14 @@ class RichUI:
     def show_goodbye(self) -> None:
         """Display exit message."""
         self.console.print()
-        self.console.print(
-            Panel(
-                "Vielen Dank für die Nutzung von PW-Tool.",
-                style="bold cyan",
-                expand=False
+        if self.is_compact:
+            self.console.print("[bold cyan]Vielen Dank für die Nutzung von PW-Tool.[/bold cyan]")
+        else:
+            self.console.print(
+                Panel(
+                    "Vielen Dank für die Nutzung von PW-Tool.",
+                    style="bold cyan",
+                    expand=False,
+                )
             )
-        )
         self.console.print()

@@ -22,21 +22,25 @@ class SessionProfiles:
 
     enabled: set[ProfileOption] = field(default_factory=lambda: set(_DEFAULT_ENABLED))
 
-    def toggle(self, selection: str) -> tuple[ProfileOption, ...]:
-        """Schaltet durch Leerzeichen/Komma getrennte verfügbare Optionen um."""
+    @classmethod
+    def from_selection(cls, selection: str) -> "SessionProfiles":
+        """Erstellt die Auswahl aus einer einzigen Eingabe.
+
+        Eine leere Eingabe behält die sichere Standardoption 1. Andernfalls
+        aktiviert die Eingabe genau die durch Leerzeichen oder Komma getrennten
+        Optionen; ein wiederholtes Umschalten ist nicht erforderlich.
+        """
         values = [value for value in selection.replace(",", " ").split() if value]
-        changed: list[ProfileOption] = []
+        if not values:
+            return cls()
+
+        selected: set[ProfileOption] = set()
         for value in values:
             try:
-                option = ProfileOption(value)
+                selected.add(ProfileOption(value))
             except ValueError as error:
                 raise ValueError("Nur die aktuell verfügbaren Optionsnummern 1 und 2 sind erlaubt.") from error
-            if option in self.enabled:
-                self.enabled.remove(option)
-            else:
-                self.enabled.add(option)
-            changed.append(option)
-        return tuple(changed)
+        return cls(enabled=selected)
 
     def is_enabled(self, option: ProfileOption) -> bool:
         return option in self.enabled

@@ -75,28 +75,23 @@ class PasswordGeneratorApp:
         """Führt die Rich-TUI aus; Enter im Startprofil-Menü startet die Sitzung."""
         self.ui.show_header()
         profiles = self.ui.get_session_profiles()
+        config = self.ui.get_generation_config()
 
         while True:
             try:
-                password_length = self.ui.get_password_length()
-                charset = self.ui.get_character_set()
-                system_mix_enabled = self.ui.get_system_mix_enabled()
-                overkill = self.ui.get_overkill_mode()
-                password_count = self.ui.get_batch_count()
-
                 def compute():
                     return self.generate_with_mode(
-                        password_count,
-                        password_length,
-                        charset,
-                        overkill,
-                        system_mix_enabled,
+                        config.password_count,
+                        config.password_length,
+                        config.charset,
+                        config.overkill,
+                        config.system_mix_enabled,
                         profiles,
                     )
 
                 result, decision = self.ui.run_computation_threaded(
                     compute,
-                    description="Selecting backend and deriving passwords...",
+                    description="Berechne...",
                 )
                 self.ui.show_backend_decision(
                     result.backend.value,

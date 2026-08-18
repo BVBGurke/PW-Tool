@@ -28,7 +28,7 @@ python -m pip install -r requirements-benchmark.txt
 
 ## Beta-Optionen
 
-Vor der ersten Passwortabfrage zeigt die interaktive TUI ausschließlich Optionen, die in der aktuellen Beta tatsächlich wirken. Gib eine oder mehrere Nummern, getrennt durch Leerzeichen oder Komma, ein, um sie umzuschalten. **Enter ohne Zahl startet** direkt mit der aktuellen Auswahl. Die Auswahl gilt nur für die laufende Sitzung.
+Vor der ersten Passwortabfrage zeigt die interaktive TUI ausschließlich Optionen, die in der aktuellen Beta tatsächlich wirken. Gib die gewünschten Nummern **einmalig** ein, getrennt durch Leerzeichen oder Komma. **Enter ohne Zahl** nutzt die sichere Standardoption 1. Die Auswahl und alle Generierungseinstellungen werden für die gesamte Sitzung beibehalten; eine Wiederholung erzeugt neue Passwörter mit derselben Konfiguration, ohne erneut nach Länge, Zeichensatz oder Batchgröße zu fragen.
 
 | Nr. | Option | Standard | Wirkung |
 |---|---|---:|---|
@@ -36,6 +36,10 @@ Vor der ersten Passwortabfrage zeigt die interaktive TUI ausschließlich Optione
 | 2 | Ergebnis-Metriken | Inaktiv | Zeigt zusätzliche, nicht sensitive Phasenzeiten in der Ergebnisansicht. |
 
 Nicht sichtbare Zukunftsthemen wie Hybrid-Pipeline, Energieprofil oder CUDA-Warm-up sind **nicht** als Beta-Funktion implementiert und werden daher nicht auswählbar dargestellt.
+
+### Schmale und mobile Terminals
+
+Bei einer Terminalbreite unter 72 Zeichen schaltet PW-Tool auf eine **textorientierte Kompaktansicht**. Status, Backendentscheidung und Ergebnisse werden dann zeilenweise ausgegeben. Lange Passwörter werden gefaltet statt mit einer Ellipse abgeschnitten, sodass alle Zeichen sichtbar bleiben. In breiten Terminals bleibt die tabellarische Rich-Ausgabe aktiv.
 
 ## CUDA: aktueller Sicherheits- und Performance-Status
 
