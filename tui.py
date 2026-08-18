@@ -21,6 +21,8 @@ except ImportError:
     RICH_AVAILABLE = False
 
 from password_engine import CharacterSet, PasswordGenerator, parse_charset_input
+from system_mix import SystemMixStatus
+from profiles import ProfileOption, SessionProfiles
 
 
 class RichUI:
@@ -49,10 +51,10 @@ class RichUI:
 
     def show_header(self) -> None:
         """Display application header with system status."""
-        header_text = "🔐 GPU-ACCELERATED PASSWORD GENERATOR"
+        header_text = "LOKALER PYTHON-PASSWORTGENERATOR"
         
-        status = "✅ GPU Ready" if self.cuda_available else "⚠️  CPU Mode (No GPU)"
-        device_info = f"Device: {self.device_name}" if self.device_name else "CPU-only"
+        status = "CUDA erkannt" if self.cuda_available else "CPU-Modus (kein CUDA)"
+        device_info = f"Gerät: {self.device_name}" if self.device_name else "Nur CPU"
         
         self.console.print()
         self.console.print(
@@ -64,6 +66,43 @@ class RichUI:
         )
         self.console.print()
 
+    def get_session_profiles(self) -> SessionProfiles:
+        """Zeigt wirksame Beta-Optionen; Enter startet mit der aktuellen Wahl."""
+        profiles = SessionProfiles()
+        descriptions = {
+            ProfileOption.GPU_FIRST: "CUDA als Kandidat prüfen; sicherer CPU-Fallback bleibt aktiv",
+            ProfileOption.BENCHMARK_METRICS: "zusätzliche, nicht sensitive Phasenzeiten anzeigen",
+        }
+        self.console.print("[bold]Beta-Optionen (Nummern umschalten; Enter startet):[/bold]")
+        while True:
+            table = Table(show_header=True)
+            table.add_column("Nr.", style="cyan", width=5)
+            table.add_column("Aktiv", width=8)
+            table.add_column("Profil")
+            for option in ProfileOption:
+                active = "Ja" if profiles.is_enabled(option) else "Nein"
+                table.add_row(option.value, active, descriptions[option])
+            self.console.print(table)
+            choice = Prompt.ask("Optionsnummern", default="", console=self.console).strip()
+            if not choice:
+                return profiles
+            try:
+                profiles.toggle(choice)
+            except ValueError as error:
+                self.console.print(f"[red]{error}[/red]")
+
+    def show_backend_decision(self, backend: str, reason: str, logging_enabled: bool) -> None:
+        """Zeigt die sichere Backendentscheidung ohne Messgeheimnisse."""
+        logging = "Diagnoselog aktiv" if logging_enabled else "Kein Diagnoselog"
+        self.console.print(
+            Panel(
+                f"Backend: {backend.upper()}\n{reason}\n{logging}",
+                title="Ausführungsentscheidung",
+                style="bold green" if backend == "cuda" else "bold cyan",
+                expand=False,
+            )
+        )
+
     def get_password_length(self) -> int:
         """
         Prompt user for password length.
@@ -74,7 +113,7 @@ class RichUI:
         while True:
             try:
                 length_str = Prompt.ask(
-                    "[yellow]Password length[/yellow]",
+                    "[yellow]Passwortlänge[/yellow]",
                     default="64",
                     console=self.console
                 )
@@ -83,10 +122,10 @@ class RichUI:
                     return length
                 else:
                     self.console.print(
-                        "[red]✗ Length must be between 8 and 256.[/red]"
+                        "[red]✗ Die Länge muss zwischen 8 und 256 liegen.[/red]"
                     )
             except ValueError:
-                self.console.print("[red]✗ Please enter a valid number.[/red]")
+                self.console.print("[red]✗ Bitte eine gültige Zahl eingeben.[/red]")
 
     def get_character_set(self) -> CharacterSet:
         """
@@ -96,9 +135,9 @@ class RichUI:
             CharacterSet enum value.
         """
         self.console.print()
-        self.console.print("[bold]Character Set:[/bold]")
-        self.console.print("  [cyan]1[/cyan] - Normal (letters + digits)")
-        self.console.print("  [cyan]2[/cyan] - Complete (+ special symbols)")
+        self.console.print("[bold]Zeichensatz:[/bold]")
+        self.console.print("  [cyan]1[/cyan] - Standard (Buchstaben + Ziffern)")
+        self.console.print("  [cyan]2[/cyan] - Vollständig (+ Sonderzeichen)")
         
         while True:
             try:
@@ -109,7 +148,17 @@ class RichUI:
                 )
                 return parse_charset_input(choice)
             except ValueError:
-                self.console.print("[red]✗ Please enter 1 or 2.[/red]")
+                self.console.print("[red]✗ Bitte 1 oder 2 eingeben.[/red]")
+
+    def get_system_mix_enabled(self) -> bool:
+        """Fragt ab, ob die lokale, feste Systemdatei-Allowlist genutzt werden soll."""
+        self.console.print()
+        return Confirm.ask(
+            "[bold]Automatische lokale Systemdatei-Mischung aktivieren?[/bold] "
+            "(nur feste, nicht sensible Dateien; Standard: Ja)",
+            default=True,
+            console=self.console,
+        )
 
     def get_overkill_mode(self) -> bool:
         """
@@ -120,7 +169,8 @@ class RichUI:
         """
         self.console.print()
         overkill = Confirm.ask(
-            "[bold]Enable Overkill Mode?[/bold] (slower, more entropy)",
+            "[bold]Zusätzliche KDF-Arbeit aktivieren?[/bold] "
+            "(langsamer; keine zusätzliche Zufallsentropie)",
             default=False,
             console=self.console
         )
@@ -136,17 +186,19 @@ class RichUI:
         while True:
             try:
                 count_str = Prompt.ask(
-                    "[yellow]Passwords to generate[/yellow]",
+                    "[yellow]Anzahl der Passwörter[/yellow]",
                     default="1",
                     console=self.console
                 )
                 count = int(count_str)
-                if count >= 1:
+                from backends.base import MAX_BATCH_COUNT
+                if 1 <= count <= MAX_BATCH_COUNT:
                     return count
-                else:
-                    self.console.print("[red]✗ Must be at least 1.[/red]")
+                self.console.print(
+                    f"[red]✗ Anzahl muss zwischen 1 und {MAX_BATCH_COUNT} liegen.[/red]"
+                )
             except ValueError:
-                self.console.print("[red]✗ Please enter a valid number.[/red]")
+                self.console.print("[red]✗ Bitte eine gültige Zahl eingeben.[/red]")
 
     def run_computation_threaded(
         self,
@@ -197,7 +249,9 @@ class RichUI:
     def display_passwords(
         self,
         passwords: list,
-        execution_mode: str = "GPU"
+        execution_mode: str = "GPU",
+        system_mix_status: SystemMixStatus = SystemMixStatus.DISABLED,
+        system_mix_sources: int = 0,
     ) -> None:
         """
         Display generated passwords in a formatted table.
@@ -209,9 +263,9 @@ class RichUI:
         self.console.print()
         
         # Create table
-        table = Table(title="Generated Passwords", show_header=True)
+        table = Table(title="Generierte Passwörter", show_header=True)
         table.add_column("#", style="cyan", width=5)
-        table.add_column("Password", style="bold green")
+        table.add_column("Passwort", style="bold green")
         
         for idx, pwd in enumerate(passwords, 1):
             table.add_row(str(idx), pwd)
@@ -220,8 +274,22 @@ class RichUI:
         
         # Summary
         self.console.print()
-        summary = f"[cyan]Generated {len(passwords)} password(s) in {self.computation_time:.2f}s ({execution_mode})[/cyan]"
+        summary = f"[cyan]{len(passwords)} Passwort/Passwörter in {self.computation_time:.2f}s erzeugt ({execution_mode})[/cyan]"
         self.console.print(summary)
+        self.console.print(self._system_mix_summary(system_mix_status, system_mix_sources))
+
+    def _system_mix_summary(
+        self,
+        status: SystemMixStatus,
+        source_count: int,
+    ) -> str:
+        if status is SystemMixStatus.COMPLETE:
+            return f"[green]Systemmix aktiv: {source_count} lokale, feste Quellen wurden gehasht.[/green]"
+        if status is SystemMixStatus.PARTIAL:
+            return "[yellow]Systemmix unvollständig: Sicherer Systemzufall wurde ohne Dateimix verwendet.[/yellow]"
+        if status is SystemMixStatus.UNAVAILABLE:
+            return "[yellow]Systemmix nicht verfügbar: Sicherer Systemzufall wurde ohne Dateimix verwendet.[/yellow]"
+        return "[cyan]Systemmix deaktiviert: Sicherer Systemzufall wurde verwendet.[/cyan]"
 
     def show_error(self, title: str, message: str) -> None:
         """
@@ -246,8 +314,8 @@ class RichUI:
         """Display notice that system fell back to CPU mode."""
         self.console.print(
             Panel(
-                "GPU acceleration unavailable. Using CPU mode.",
-                title="⚠️  Fallback to CPU",
+                "CUDA-Beschleunigung ist nicht verfügbar. CPU-Modus wird verwendet.",
+                title="Fallback auf CPU",
                 style="bold yellow",
                 expand=False
             )
@@ -273,7 +341,7 @@ class RichUI:
         self.console.print()
         self.console.print(
             Panel(
-                "Thank you for using Password Generator!",
+                "Vielen Dank für die Nutzung von PW-Tool.",
                 style="bold cyan",
                 expand=False
             )

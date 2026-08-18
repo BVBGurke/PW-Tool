@@ -1,180 +1,164 @@
-"""
-GPU-Accelerated Password Generator
+"""Interaktiver Einstiegspunkt für die reine Python-CLI von PW-Tool."""
 
-Main orchestrator combining GPU/CPU entropy generation with Rich TUI.
-No artificial delays—all computation time is real hardware work.
+from __future__ import annotations
 
-Features:
-- CUDA/GPU acceleration with automatic CPU fallback
-- Interactive menu-driven interface
-- Overkill Mode for enhanced entropy (5x iterations)
-- Batch password generation
-- Real-time progress tracking
-
-Usage:
-    python pw.py
-"""
-
+import argparse
+from pathlib import Path
 import sys
-import time
+
+from backends.base import GenerationRequest
 from cuda_engine import get_cuda_engine
-from cpu_engine import get_cpu_engine, CPUEngine
-from password_engine import PasswordGenerator, CharacterSet
+from diagnostics import SafeDiagnosticLogger
+from dispatcher import BackendDispatcher, BackendPreference
+from password_engine import CharacterSet
+from profiles import ProfileOption, SessionProfiles
 from tui import RichUI
+from version import __version__
 
 
 class PasswordGeneratorApp:
-    """Main application orchestrator."""
+    """Orchestriert sichere Erzeugung, Backend-Auswahl und TUI ohne Secret-Logging."""
 
-    def __init__(self):
-        """Initialize application with CUDA detection."""
+    def __init__(self, *, log_enabled: bool = False, log_directory: Path | None = None) -> None:
         self.cuda_engine = get_cuda_engine()
-        self.cpu_engine = get_cpu_engine()
-        
-        cuda_available, device_name, error_msg = self.cuda_engine.get_status()
-        self.cuda_available = cuda_available
-        self.device_name = device_name
-        self.error_msg = error_msg
-        self.use_gpu = cuda_available
-        
+        cuda_available, device_name, _ = self.cuda_engine.get_status()
         self.ui = RichUI(cuda_available, device_name)
+        self.dispatcher = BackendDispatcher()
+        self.logger = SafeDiagnosticLogger(enabled=log_enabled, directory=log_directory)
 
     def generate_with_mode(
         self,
         password_count: int,
         password_length: int,
         charset: CharacterSet,
-        overkill: bool = False
+        overkill: bool,
+        system_mix_enabled: bool,
+        profiles: SessionProfiles,
     ) -> tuple:
-        """
-        Generate passwords using available hardware (GPU or CPU).
-        
-        Args:
-            password_count: Number of passwords to generate
-            password_length: Length of each password
-            charset: Character set to use
-            overkill: If True, use 5x iterations for more entropy
-            
-        Returns:
-            (passwords_list, execution_mode_string)
-        """
-        # Determine iteration count
-        base_iterations = 200000
-        iterations = CPUEngine.scale_iterations_for_mode(
-            base_iterations,
-            overkill=overkill,
-            multiplier=5.0
+        """Erzeugt einen Batch über den messbasiert ausgewählten sicheren Backendpfad."""
+        iterations = 1_000_000 if overkill else 200_000
+        request = GenerationRequest(
+            password_count=password_count,
+            password_length=password_length,
+            charset=charset,
+            iterations=iterations,
+            system_mix_enabled=system_mix_enabled,
         )
-        
-        # Try GPU first
-        if self.use_gpu:
-            try:
-                entropy = self.cuda_engine.gpu_entropy_pbkdf2(
-                    iterations=iterations,
-                    hash_length=64
-                )
-                
-                if entropy:
-                    passwords = PasswordGenerator.generate_batch(
-                        entropy,
-                        password_count,
-                        password_length,
-                        charset
-                    )
-                    return passwords, "GPU"
-                    
-            except Exception as e:
-                self.ui.show_error(
-                    "GPU Generation Failed",
-                    f"Falling back to CPU mode.\n{str(e)}"
-                )
-                self.use_gpu = False
-                self.ui.show_fallback_notice()
-        
-        # Fallback to CPU
-        try:
-            entropy = self.cpu_engine.cpu_entropy_pbkdf2(
-                iterations=iterations,
-                hash_length=64
+        preference = (
+            BackendPreference.GPU_FIRST
+            if profiles.is_enabled(ProfileOption.GPU_FIRST)
+            else BackendPreference.CPU_ONLY
+        )
+        result, decision = self.dispatcher.generate(request, preference)
+
+        self.logger.log(
+            "backend_selected",
+            backend_selected=result.backend.value,
+            fallback_reason=decision.reason,
+            batch_count=password_count,
+            password_length=password_length,
+            iterations=iterations,
+            profile_flags=profiles.labels(),
+            cuda_available=self.cuda_engine.available,
+        )
+        for phase, seconds in result.phase_seconds.items():
+            self.logger.log(
+                "phase_timing",
+                backend=result.backend.value,
+                phase=phase,
+                duration_ms=round(seconds * 1000, 3),
             )
-            passwords = PasswordGenerator.generate_batch(
-                entropy,
-                password_count,
-                password_length,
-                charset
-            )
-            return passwords, "CPU"
-            
-        except Exception as e:
-            self.ui.show_error(
-                "Password Generation Failed",
-                f"Unable to generate passwords: {str(e)}"
-            )
-            return [], "ERROR"
+
+        return result, decision
 
     def run_interactive(self) -> None:
-        """Run interactive password generation loop."""
+        """Führt die Rich-TUI aus; Enter im Startprofil-Menü startet die Sitzung."""
         self.ui.show_header()
-        
+        profiles = self.ui.get_session_profiles()
+
         while True:
             try:
-                # Collect user input
                 password_length = self.ui.get_password_length()
                 charset = self.ui.get_character_set()
+                system_mix_enabled = self.ui.get_system_mix_enabled()
                 overkill = self.ui.get_overkill_mode()
                 password_count = self.ui.get_batch_count()
-                
-                # Generate with threaded progress
+
                 def compute():
-                    passwords, mode = self.generate_with_mode(
+                    return self.generate_with_mode(
                         password_count,
                         password_length,
                         charset,
-                        overkill
+                        overkill,
+                        system_mix_enabled,
+                        profiles,
                     )
-                    return passwords, mode
-                
-                passwords, exec_mode = self.ui.run_computation_threaded(
+
+                result, decision = self.ui.run_computation_threaded(
                     compute,
-                    description="Generating entropy and deriving passwords..."
+                    description="Selecting backend and deriving passwords...",
                 )
-                
-                # Display results
-                if passwords:
-                    self.ui.display_passwords(passwords, exec_mode)
-                
-                # Ask to continue
+                self.ui.show_backend_decision(
+                    result.backend.value,
+                    decision.reason,
+                    self.logger.enabled,
+                )
+                if result.passwords:
+                    self.ui.display_passwords(
+                        result.passwords,
+                        result.backend.value.upper(),
+                        result.system_mix.status,
+                        result.system_mix.source_count,
+                    )
+                if profiles.is_enabled(ProfileOption.BENCHMARK_METRICS):
+                    self._show_phase_metrics(result.phase_seconds)
+
                 if not self.ui.prompt_continue():
                     self.ui.show_goodbye()
                     break
-                    
             except KeyboardInterrupt:
-                self.ui.console.print("\n[yellow]Interrupted by user.[/yellow]")
                 self.ui.show_goodbye()
                 break
-            except Exception as e:
-                self.ui.show_error("Unexpected Error", str(e))
+            except Exception as error:
+                self.ui.show_error("Unexpected Error", str(error))
+
+    def _show_phase_metrics(self, timings: dict) -> None:
+        self.ui.console.print("[bold]Messphasen:[/bold]")
+        for phase, seconds in sorted(timings.items()):
+            self.ui.console.print(f"  {phase}: {seconds * 1000:.3f} ms")
 
     def run(self) -> int:
-        """
-        Run the application.
-        
-        Returns:
-            Exit code (0 for success, 1 for error)
-        """
         try:
             self.run_interactive()
             return 0
-        except Exception as e:
-            print(f"Fatal error: {e}", file=sys.stderr)
+        except Exception as error:
+            print(f"Fatal error: {error}", file=sys.stderr)
             return 1
 
 
-def main():
-    """Main entry point."""
-    app = PasswordGeneratorApp()
-    exit_code = app.run()
-    sys.exit(exit_code)
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="PW-Tool – lokale Python-Passwort-CLI")
+    parser.add_argument("--version", action="version", version=f"PW-Tool {__version__}")
+    parser.add_argument(
+        "-log",
+        "--log",
+        action="store_true",
+        dest="log_enabled",
+        help="Aktiviert redigierte lokale Diagnose-JSONL-Dateien; niemals Passwörter oder Seeds.",
+    )
+    parser.add_argument(
+        "--log-directory",
+        type=Path,
+        default=None,
+        help="Optionales lokales Zielverzeichnis für -log-Dateien.",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> None:
+    args = parse_args(argv if argv is not None else sys.argv[1:])
+    app = PasswordGeneratorApp(log_enabled=args.log_enabled, log_directory=args.log_directory)
+    raise SystemExit(app.run())
 
 
 if __name__ == "__main__":

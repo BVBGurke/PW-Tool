@@ -1,53 +1,41 @@
-"""
-Password Generation Engine.
+"""Sichere Passwortableitung aus kryptografischem Entropiematerial.
 
-Derives secure passwords from entropy sources (GPU or CPU).
-Implements uniform character distribution and deterministic extraction.
+Die Implementierung nutzt HMAC-SHA-512-Blöcke und Rejection Sampling. Dadurch
+hängt jedes Zeichen tatsächlich vom übergebenen Entropiematerial ab, es entstehen
+keine großen temporären Zeichenpools und es gibt keinen Modulo-Bias.
 """
 
-import secrets
+from __future__ import annotations
+
+import hashlib
+import hmac
 import string
-from typing import Optional, Tuple
 from enum import Enum
 
 
 class CharacterSet(Enum):
-    """Available character sets for password generation."""
-    NORMAL = "normal"      # Letters + digits
-    COMPLETE = "complete"  # Letters + digits + special symbols
+    """Verfügbare Zeichensätze für Passwörter."""
+
+    NORMAL = "normal"
+    COMPLETE = "complete"
 
 
 class PasswordGenerator:
-    """Generates secure passwords from entropy sources."""
+    """Leitet Passwörter lokal und effizient aus einem Entropieseed ab."""
 
-    # Character sets
     CHARS_NORMAL = string.ascii_letters + string.digits
     CHARS_COMPLETE = string.ascii_letters + string.digits + "!@#$%^&*()-_=+[]{}"
+    _BLOCK_DOMAIN = b"PW-Tool PasswordBlock v1"
+    _BATCH_DOMAIN = b"PW-Tool BatchEntropy v1"
 
     @staticmethod
     def validate_length(length: int) -> bool:
-        """
-        Validate password length.
-        
-        Args:
-            length: Desired password length
-            
-        Returns:
-            True if length is valid (8-256), False otherwise.
-        """
+        """Prüft die unterstützte Passwortlänge von 8 bis 256 Zeichen."""
         return 8 <= length <= 256
 
     @staticmethod
     def get_character_set(charset: CharacterSet) -> str:
-        """
-        Get character set string.
-        
-        Args:
-            charset: CharacterSet enum value
-            
-        Returns:
-            String of available characters.
-        """
+        """Gibt die Zeichen des gewählten Zeichensatzes zurück."""
         if charset == CharacterSet.COMPLETE:
             return PasswordGenerator.CHARS_COMPLETE
         return PasswordGenerator.CHARS_NORMAL
@@ -56,110 +44,69 @@ class PasswordGenerator:
     def generate(
         entropy: bytes,
         length: int,
-        charset: CharacterSet = CharacterSet.NORMAL
+        charset: CharacterSet = CharacterSet.NORMAL,
     ) -> str:
-        """
-        Derive a password from entropy bytes.
-        
-        Algorithm:
-        1. Create large character pool (length × 5000)
-        2. Shuffle pool using entropy as seed
-        3. Extract contiguous slice deterministically using entropy offset
-        
-        Args:
-            entropy: Source entropy (typically from GPU or CPU PBKDF2)
-            length: Desired password length (must be valid)
-            charset: Character set to use (NORMAL or COMPLETE)
-            
-        Returns:
-            Generated password string of specified length.
-            
-        Raises:
-            ValueError: If length is invalid.
+        """Leitet ein Passwort per HMAC-SHA-512 und Rejection Sampling ab.
+
+        Das Verfahren vermeidet die Modulo-Verzerrung von ``byte % alphabet``.
+        Entropie wird vollständig in der HMAC-Schlüsselposition verwendet, daher
+        wirkt sich eine Änderung im Systemmix auf das resultierende Passwort aus.
         """
         if not PasswordGenerator.validate_length(length):
             raise ValueError(f"Length must be 8-256, got {length}")
+        if not entropy:
+            raise ValueError("Entropy must not be empty")
 
-        chars = PasswordGenerator.get_character_set(charset)
-        
-        # Create massive pool for distribution uniformity
-        pool_size = length * 5000
-        pool = [secrets.choice(chars) for _ in range(pool_size)]
-        
-        # Use entropy to seed shuffles (multiple shuffles increase randomness)
-        rng = secrets.SystemRandom()
-        
-        # Derive shuffle seed from entropy
-        num_shuffles = 5 + (entropy[0] % 5)  # 5-10 shuffles
-        for i in range(num_shuffles):
-            # Use different entropy bytes for each shuffle
-            seed_byte = entropy[i % len(entropy)]
-            rng.seed(entropy)  # Seed with full entropy
-            rng.shuffle(pool)
-        
-        # Deterministic offset extraction using last entropy byte
-        offset = entropy[-1] % (pool_size - length)
-        password = "".join(pool[offset : offset + length])
-        
-        return password
+        characters = PasswordGenerator.get_character_set(charset)
+        acceptance_limit = 256 - (256 % len(characters))
+        password = []
+        block_counter = 0
+
+        while len(password) < length:
+            block = hmac.new(
+                entropy,
+                PasswordGenerator._BLOCK_DOMAIN + block_counter.to_bytes(8, "big"),
+                hashlib.sha512,
+            ).digest()
+            block_counter += 1
+
+            for value in block:
+                if value >= acceptance_limit:
+                    continue
+                password.append(characters[value % len(characters)])
+                if len(password) == length:
+                    break
+
+        return "".join(password)
 
     @staticmethod
     def generate_batch(
         entropy: bytes,
         count: int,
         length: int,
-        charset: CharacterSet = CharacterSet.NORMAL
-    ) -> list:
-        """
-        Generate multiple passwords from a single entropy source.
-        
-        Args:
-            entropy: Source entropy
-            count: Number of passwords to generate
-            length: Length of each password
-            charset: Character set to use
-            
-        Returns:
-            List of count passwords.
-        """
+        charset: CharacterSet = CharacterSet.NORMAL,
+    ) -> list[str]:
+        """Leitet für jeden Batch-Eintrag einen getrennten Entropieseed ab."""
         if count < 1:
             raise ValueError("Count must be >= 1")
-        
+
         passwords = []
-        for i in range(count):
-            # Derive unique entropy for each password by hashing
-            import hashlib
-            unique_entropy = hashlib.sha256(
-                entropy + bytes([i])
+        for index in range(count):
+            unique_entropy = hashlib.sha512(
+                PasswordGenerator._BATCH_DOMAIN
+                + entropy
+                + index.to_bytes(8, "big")
             ).digest()
-            password = PasswordGenerator.generate(
-                unique_entropy,
-                length,
-                charset
-            )
-            passwords.append(password)
-        
+            passwords.append(PasswordGenerator.generate(unique_entropy, length, charset))
+
         return passwords
 
 
 def parse_charset_input(choice: str) -> CharacterSet:
-    """
-    Parse user character set choice.
-    
-    Args:
-        choice: User input ("1" for NORMAL, "2" for COMPLETE, or name)
-        
-    Returns:
-        CharacterSet enum value.
-        
-    Raises:
-        ValueError: If choice is invalid.
-    """
+    """Parst die CLI-Auswahl für einen Zeichensatz."""
     choice_lower = choice.lower().strip()
-    
     if choice_lower in ("1", "normal"):
         return CharacterSet.NORMAL
-    elif choice_lower in ("2", "complete"):
+    if choice_lower in ("2", "complete"):
         return CharacterSet.COMPLETE
-    else:
-        raise ValueError(f"Invalid character set choice: {choice}")
+    raise ValueError(f"Invalid character set choice: {choice}")

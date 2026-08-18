@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pw-tool"
+version = "0.1.0b1"
+description = "Lokaler Python-CLI-Passwortgenerator für eine private technische Beta"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "rich>=13.7,<15",
+]
+
+[project.scripts]
+pw-tool = "pw:main"
+
+[tool.setuptools]
+py-modules = [
+    "cpu_engine",
+    "cuda_engine",
+    "diagnostics",
+    "dispatcher",
+    "password_engine",
+    "profiles",
+    "pw",
+    "system_mix",
+    "tui",
+    "version",
+]
+packages = ["backends", "benchmark"]
+
+[tool.setuptools.package-data]
+"*" = ["*.md"]

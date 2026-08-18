@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from cuda_engine import get_cuda_engine
 from cpu_engine import get_cpu_engine
 from password_engine import PasswordGenerator, CharacterSet
+from system_mix import SystemMixStatus, collect_system_mix
 
 
 def test_basic_functionality():
@@ -112,6 +113,30 @@ def test_basic_functionality():
     except Exception as e:
         print(f"    FAIL - {e}")
     
+    # Test 7: Automatic local system mix
+    print("\n[7] Automatic Local System Mix...")
+    tests_total += 1
+    try:
+        system_mix = collect_system_mix(enabled=True)
+        if system_mix.status is SystemMixStatus.COMPLETE and system_mix.source_count in range(3, 6):
+            mixed_entropy = cpu_engine.cpu_entropy_pbkdf2(
+                iterations=10000,
+                hash_length=64,
+                system_mix=system_mix,
+            )
+            if len(mixed_entropy) == 64:
+                print(f"    PASS - Complete local mix with {system_mix.source_count} sources")
+                tests_passed += 1
+            else:
+                print("    FAIL - Mixed entropy has unexpected length")
+        elif system_mix.status in (SystemMixStatus.PARTIAL, SystemMixStatus.UNAVAILABLE):
+            print(f"    PASS - Safe fallback status: {system_mix.status.value}")
+            tests_passed += 1
+        else:
+            print(f"    FAIL - Unexpected system mix status: {system_mix.status.value}")
+    except Exception as e:
+        print(f"    FAIL - {e}")
+
     # Summary
     print("\n" + "="*60)
     print(f"RESULTS: {tests_passed}/{tests_total} tests passed")

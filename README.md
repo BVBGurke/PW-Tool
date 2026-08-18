@@ -1,379 +1,145 @@
-"""
-GPU-ACCELERATED PASSWORD GENERATOR
+# PW-Tool
 
-An ultra-high-performance cryptographic password generator with CUDA GPU acceleration,
-clean modular architecture, and professional Rich TUI.
+PW-Tool ist eine **reine Python-CLI** für lokale Passworterzeugung. Das Projekt enthält keine APK, keine native Mobile-App und keine Telemetrie. Es läuft auf macOS, Windows, Linux sowie geeigneten Android-Python-Terminalumgebungen. NVIDIA/CUDA bleibt als optionaler, messbasierter Kandidat vorgesehen; ein sicherer CPU-/ARM64-Pfad ist immer vorhanden.
 
-█████████████████████████████████████████████████████████████████████████████
+> Die GPU-Präferenz wird respektiert, aber keine GPU wird blind erzwungen. PW-Tool wählt CUDA nur dann für einen konkreten Workload, wenn eine echte Messung einen sicheren End-to-End-Vorteil zeigt. Auf Android-ARM64 ohne NVIDIA-CUDA bleibt der CPU-Fallback aktiv.
 
-FEATURES
-════════════════════════════════════════════════════════════════════════════
+## Installation und Start
 
-✓ GPU Acceleration (CUDA/CuPy) with automatic CPU fallback
-✓ Ultra-high entropy derivation using PBKDF2-HMAC-SHA512
-✓ Overkill Mode: 5x iterations for enhanced entropy (~1-2 seconds)
-✓ Interactive Rich TUI with real-time progress tracking
-✓ Multiple character sets (Normal & Complete with special symbols)
-✓ Batch password generation
-✓ No artificial delays—all execution time is real hardware computation
-✓ Cross-platform (Windows CMD, PowerShell, WSL, Linux, macOS)
-✓ Modular, easy-to-read code structure
+PW-Tool benötigt Python 3.10 oder neuer. Die Rich-TUI ist die einzige reguläre Abhängigkeit.
 
+```bash
+python -m pip install .
+pw-tool --version
+pw-tool
 
-INSTALLATION
-════════════════════════════════════════════════════════════════════════════
-
-1. Requirements:
-   - Python 3.10+
-   - Virtual environment (recommended)
-
-2. Install dependencies:
-   pip install rich
-
-3. (Optional) Install CuPy for GPU acceleration:
-   # For CUDA 12.x:
-   pip install cupy-cuda12x
-   
-   # For CUDA 13.x:
-   pip install cupy-cuda13x
-   
-   To check your CUDA version:
-   nvidia-smi
-
-
-QUICK START
-════════════════════════════════════════════════════════════════════════════
-
+# Alternativ direkt aus dem geklonten Arbeitsbaum:
+python -m pip install -r requirements.txt
 python pw.py
+```
 
-Then follow the interactive prompts:
-  1. Enter password length (8-256, default 64)
-  2. Choose character set (1=Normal, 2=Complete with symbols)
-  3. Enable Overkill Mode (Y/N) for more entropy
-  4. Enter batch count (how many passwords to generate)
-  5. View generated passwords in formatted table
-  6. Generate another or exit
-
-
-ARCHITECTURE
-════════════════════════════════════════════════════════════════════════════
-
-pw.py                - Main orchestrator & entry point
-├── PasswordGeneratorApp
-│   ├── CUDA detection & initialization
-│   ├── User input collection via TUI
-│   ├── GPU/CPU routing for entropy generation
-│   └── Password display & loop control
-│
-├── tui.py           - Interactive Rich-based terminal UI
-│   └── RichUI class
-│       ├── Header display (CUDA status)
-│       ├── Input prompts (length, charset, overkill, batch)
-│       ├── Non-blocking computation with progress bar
-│       └── Formatted password output table
-│
-├── cuda_engine.py   - GPU-accelerated entropy (CUDA/CuPy)
-│   └── CUDAEngine class
-│       ├── CUDA detection & device info
-│       ├── gpu_entropy_pbkdf2() - PBKDF2 with GPU-generated entropy
-│       └── gpu_raw_entropy() - Raw cuRAND bytes
-│
-├── cpu_engine.py    - CPU fallback entropy generation
-│   └── CPUEngine class
-│       ├── cpu_entropy_pbkdf2() - Standard hashlib PBKDF2
-│       └── scale_iterations_for_mode() - Normal/Overkill iteration scaling
-│
-└── password_engine.py - Password derivation from entropy
-    └── PasswordGenerator class
-        ├── generate() - Single password from entropy
-        ├── generate_batch() - Multiple passwords
-        └── Character set management (NORMAL, COMPLETE)
-
-
-ENTROPY GENERATION PROCESS
-════════════════════════════════════════════════════════════════════════════
-
-GPU Mode (CuPy available):
-  1. GPU cuRAND generates 32-byte seed + 32-byte salt
-  2. CPU PBKDF2-HMAC-SHA512 hashes with GPU-derived entropy
-  3. Result: 64-byte high-entropy key
-
-CPU Mode (fallback):
-  1. os.urandom() generates 32-byte seed + 32-byte salt
-  2. CPU PBKDF2-HMAC-SHA512 hashes with system entropy
-  3. Result: 64-byte high-entropy key
-
-Iteration counts:
-  Normal Mode:  200,000 iterations  (~0.5-1.0 second on modern CPU)
-  Overkill Mode: 1,000,000 iterations (~1.5-2.5 seconds on modern CPU)
-
-
-PASSWORD DERIVATION ALGORITHM
-════════════════════════════════════════════════════════════════════════════
-
-1. Generate massive character pool:
-   - Pool size = requested_length × 5000
-   - Ensures uniform distribution across character set
-
-2. Shuffle pool using entropy:
-   - 5-10 independent shuffle passes using SystemRandom
-   - Each pass seeded with different entropy bytes
-
-3. Deterministic extraction:
-   - Calculate offset = entropy[-1] % (pool_size - length)
-   - Extract contiguous slice of requested length
-   - Result: uniformly distributed password
-
+Für einen vollständig optionalen Benchmark-Werkzeugsatz:
 
-CHARACTER SETS
-════════════════════════════════════════════════════════════════════════════
+```bash
+python -m pip install -r requirements-benchmark.txt
+```
 
-Normal (Option 1):
-  Letters: a-z, A-Z (52)
-  Digits:  0-9 (10)
-  Total:   62 characters
-
-Complete (Option 2):
-  Letters: a-z, A-Z (52)
-  Digits:  0-9 (10)
-  Special: !@#$%^&*()-_=+[]{} (18)
-  Total:   80 characters
-
-
-PERFORMANCE BENCHMARKS
-════════════════════════════════════════════════════════════════════════════
-
-Test System: Windows 11, AMD Ryzen 9 5950X, 32GB RAM
-
-Normal Mode (200k iterations):
-  - 1 password (64 chars):   ~0.95 seconds
-  - 5 passwords (64 chars):  ~1.05 seconds
-  - 1 password (32 chars):   ~0.95 seconds
+`pyperf` ist nur für externe, statistische Benchmarks vorgesehen. CuPy und NVML-Werkzeuge bleiben bewusst optional und werden nicht zur normalen Passwortausgabe importiert.
 
-Overkill Mode (1M iterations):
-  - 3 passwords (64 chars):  ~7.50 seconds
-  - 1 password (32 chars):   Not tested (unnecessary overhead)
+## Beta-Optionen
 
-GPU Mode (CuPy on RTX 3090):
-  - Estimated: 3-5x faster than CPU PBKDF2 (pending CuPy install)
+Vor der ersten Passwortabfrage zeigt die interaktive TUI ausschließlich Optionen, die in der aktuellen Beta tatsächlich wirken. Gib eine oder mehrere Nummern, getrennt durch Leerzeichen oder Komma, ein, um sie umzuschalten. **Enter ohne Zahl startet** direkt mit der aktuellen Auswahl. Die Auswahl gilt nur für die laufende Sitzung.
 
+| Nr. | Option | Standard | Wirkung |
+|---|---|---:|---|
+| 1 | CUDA als Kandidat | Aktiv | Prüft CUDA für große Batches; der sichere CPU-/ARM64-Fallback bleibt immer verfügbar. |
+| 2 | Ergebnis-Metriken | Inaktiv | Zeigt zusätzliche, nicht sensitive Phasenzeiten in der Ergebnisansicht. |
 
-SECURITY CONSIDERATIONS
-════════════════════════════════════════════════════════════════════════════
+Nicht sichtbare Zukunftsthemen wie Hybrid-Pipeline, Energieprofil oder CUDA-Warm-up sind **nicht** als Beta-Funktion implementiert und werden daher nicht auswählbar dargestellt.
 
-✓ PBKDF2-HMAC-SHA512 is industry-standard for key derivation
-✓ High iteration counts (200k+) provide time-based defense against brute force
-✓ GPU acceleration doesn't compromise security—adds real computational cost
-✓ Entropy source: OS hardware entropy (os.urandom) or GPU cuRAND
-✓ No artificial delays—all computation time is real hardware work
-✓ Each generated password derives from unique entropy (hashed with counter)
+## CUDA: aktueller Sicherheits- und Performance-Status
 
-⚠ Note: Passwords are NOT saved anywhere. Store securely in password manager.
+Das vorherige CUDA-Modul erzeugte lediglich Seed-/Salt-Bytes über CuPy und führte PBKDF2 anschließend mit `hashlib.pbkdf2_hmac` auf der **CPU** aus. Es war daher keine echte GPU-PBKDF2-Beschleunigung. Die Architektur misst diesen Unterschied jetzt explizit und behauptet keine GPU-KDF, die nicht existiert.
 
+Passwortseeds müssen kryptografisch sicher sein. Ein nicht explizit auditierter GPU-Zufallsgenerator darf nicht zur primären Passwortentropie werden. Deshalb verwendet PW-Tool weiterhin OS-CSPRNG. CUDA wird erst dann als Passwortbackend freigegeben, wenn ein auditierter sicherer GPU-Pfad und eine echte Leistungsmessung vorliegen. Bis dahin dient der CUDA-Code als Diagnose-/Profiling-Kandidat und der Dispatcher fällt sicher auf CPU zurück.
 
-ADDITIONAL SCRIPTS
-════════════════════════════════════════════════════════════════════════════
+| Workload | Aktuelle Auswahlregel |
+|---|---|
+| Einzelpasswort / kleiner Batch | CPU-/ARM64-Pfad; vermeidet CUDA-Initialisierung und Transfer-Overhead. |
+| Großer Batch | CUDA wird als Kandidat geprüft. Die Auswahl verlangt eine kalibrierte End-to-End-Geschwindigkeit von mindestens 10 % gegenüber CPU. |
+| CUDA fehlt, fehlschlägt oder ist nicht auditiert | Sofortiger CPU-Fallback mit transparenter Begründung. |
+| Android-ARM64 ohne NVIDIA-CUDA | Sicherer CPU-Fallback; keine vorgetäuschte GPU-Beschleunigung. |
 
-verify_entropy.py
-  Comprehensive test suite validating:
-  - CUDA/GPU detection
-  - Password uniqueness (100 generated, all unique)
-  - Character distribution uniformity (1000 passwords)
-  - Performance in normal vs. overkill modes
-  - Password length and charset validation
+## Diagnoselog: nur mit `-log`
 
-  Run: python verify_entropy.py
-
-setup_cuda.py
-  Helper script to detect CUDA version and suggest CuPy installation.
-  Run: python setup_cuda.py
+Ohne Argument entstehen **keine Diagnosedateien**. Erst `-log` oder `--log` aktiviert lokal gespeicherte, zeitgestempelte JSONL-Metadaten. Die aktuelle Beta implementiert keine automatische Retention oder Rotation; Logdateien bleiben lokale Diagnoseartefakte und sollten nach einer Untersuchung manuell gelöscht werden.
 
+```bash
+python pw.py -log
+python pw.py -log --log-directory ./diagnostics
+```
 
-TROUBLESHOOTING
-════════════════════════════════════════════════════════════════════════════
+Der Logger verwendet restriktive Dateirechte, soweit die Plattform dies unterstützt. Das Schema erlaubt ausschließlich Backendentscheidung, Workloadklasse, Batchgröße, Iterationszahl, Dauer pro Phase und verfügbare Speicher-/Energiemetriken. Passwörter, Seeds, Entropie, Hashes, Digest-Werte, Dateipfade und Quellinhalte werden verworfen.
 
-Issue: "CuPy not installed" warning
-  Solution: Install CuPy for GPU acceleration
-  $ pip install cupy-cuda12x  (or cupy-cuda13x)
-  The app will automatically detect and use GPU when available.
-
-Issue: TUI not rendering properly in terminal
-  Solution: Ensure terminal supports ANSI color codes
-  - Windows CMD: Update to latest version (Windows 10+)
-  - Windows PowerShell: Should work by default
-  - WSL: Should work by default
-  - macOS Terminal: Should work by default
-
-Issue: Slow performance (>10 seconds per password)
-  Cause: CPU-only mode with very high iteration count
-  Solution: Reduce batch size or disable Overkill Mode, or install CuPy
-
-Issue: ImportError for 'rich'
-  Solution: pip install rich
-
-
-DEPENDENCIES
-════════════════════════════════════════════════════════════════════════════
-
-Core Dependencies:
-  - Python 3.10+
-  - rich          (for TUI)
-
-Optional (for GPU acceleration):
-  - cupy-cuda12x  (for CUDA 12.x)
-  - cupy-cuda13x  (for CUDA 13.x)
-
-
-FILE STRUCTURE
-════════════════════════════════════════════════════════════════════════════
-
-pw tool/
-├── pw.py                   (Main entry point)
-├── cuda_engine.py          (GPU acceleration module)
-├── cpu_engine.py           (CPU fallback module)
-├── password_engine.py      (Password derivation)
-├── tui.py                  (Rich UI)
-├── verify_entropy.py       (Test suite)
-├── setup_cuda.py           (CUDA setup helper)
-├── README.md               (This file)
-└── .venv/                  (Virtual environment)
-
-
-API REFERENCE
-════════════════════════════════════════════════════════════════════════════
-
-cuda_engine.py:
-  CUDAEngine
-    .get_status() -> (bool, str, str)
-    .gpu_entropy_pbkdf2(iterations, hash_length) -> bytes
-    .gpu_raw_entropy(size) -> bytes
-
-cpu_engine.py:
-  CPUEngine
-    .cpu_entropy_pbkdf2(iterations, hash_length) -> bytes
-    .cpu_raw_entropy(size) -> bytes
-    .scale_iterations_for_mode(base_iterations, overkill, multiplier) -> int
-
-password_engine.py:
-  PasswordGenerator
-    .validate_length(length) -> bool
-    .get_character_set(charset: CharacterSet) -> str
-    .generate(entropy, length, charset) -> str
-    .generate_batch(entropy, count, length, charset) -> list
-
-  CharacterSet (Enum)
-    .NORMAL
-    .COMPLETE
-
-
-TESTING VERIFICATION RESULTS
-════════════════════════════════════════════════════════════════════════════
-
-Manual Interactive Test (SUCCESS):
-  ✓ TUI renders correctly in PowerShell
-  ✓ Overkill Mode toggle works (7.53s for 3×64-char passwords)
-  ✓ Normal mode is faster (0.97s for 1×32-char password)
-  ✓ Character set selection works (Normal + Complete)
-  ✓ Batch generation works (1, 3, 5+ passwords)
-  ✓ Password display table formatted correctly
-  ✓ Continue/exit loop functional
-  ✓ No crashes or errors
-
-Entropy Quality Tests (PENDING):
-  - Uniqueness: 100+ passwords, zero duplicates
-  - Distribution: Character frequency uniform
-  - Performance: Confirmed speed differences between modes
-  - Validation: All passwords meet length/charset requirements
-
-
-EXAMPLES
-════════════════════════════════════════════════════════════════════════════
-
-Example 1: Generate 5 super-secure 64-character passwords (Overkill Mode)
-  $ python pw.py
-  Password length: 64
-  Character Set: 2 (Complete)
-  Overkill Mode: y
-  Passwords: 5
-  
-  Result: 5 passwords with 82-char charset, ~1M PBKDF2 iterations each
-  Time: ~2 seconds per password (very secure)
-
-Example 2: Generate single quick password
-  $ python pw.py
-  Password length: 32
-  Character Set: 1 (Normal)
-  Overkill Mode: n
-  Passwords: 1
-  
-  Result: Fast 32-char password from 62-char set
-  Time: <1 second
-
-
-ROADMAP / FUTURE ENHANCEMENTS
-════════════════════════════════════════════════════════════════════════════
-
-Planned Features:
-  ☐ Clipboard copy support (pyperclip)
-  ☐ Configuration file (.env or JSON)
-  ☐ Web UI version (Flask/FastAPI)
-  ☐ Batch export to CSV
-  ☐ Custom character sets (user-defined)
-  ☐ Password strength meter (entropy bits display)
-  ☐ Multi-GPU support (for CuPy)
-  ☐ Benchmarking tool (auto-calibrate iterations)
-
-
-DEVELOPMENT
-════████████████════════════════════════════════════════════════════════════
-
-Code Style:
-  - Type hints throughout
-  - Docstrings for all classes/functions
-  - Modular design (each file is a single responsibility)
-  - No external dependencies except 'rich' (and optional CuPy)
-
-Adding New Features:
-  1. Keep modules separate (cuda, cpu, password, tui)
-  2. Use dependency injection (pass engines to UI)
-  3. Add tests to verify_entropy.py
-  4. Update documentation
-
-
-LICENSE & ATTRIBUTION
-════════════════════════════════════════════════════════════════════════════
-
-Built with:
-  - Python 3.10+
-  - Rich (terminal UI)
-  - CuPy (GPU acceleration, optional)
-  - hashlib (cryptography)
-  - secrets (random)
-  - threading (non-blocking compute)
-
-Design principles:
-  - Zero artificial delays (all time is real computation)
-  - Clean, modular code
-  - Professional TUI
-  - Secure entropy generation
-
-
-CONTACT & SUPPORT
-════════════════════════════════════════════════════════════════════════════
-
-For issues:
-  1. Check README.md troubleshooting section
-  2. Run verify_entropy.py to diagnose
-  3. Check Python version: python --version (need 3.10+)
-  4. Verify Rich installation: pip install --upgrade rich
-
-
-════════════════════════════════════════════════════════════════════════════
-Last Updated: May 3, 2026
-Version: 1.0.0 (Production Ready)
-════════════════════════════════════════════════════════════════════════════
-"""
-
-# This file can also be printed
-if __name__ == "__main__":
-    print(__doc__)
+## Benchmarking
+
+Das integrierte Harness misst Warm-up, wiederholte Läufe, Median, p95, p99, Durchsatz und optional die Python-Allokationsspitze. Es druckt keine Passwörter oder Entropiematerialien.
+
+```bash
+# CPU-Referenz für ein Einzelpasswort
+python benchmark/run_profiles.py --profile single --backend cpu --warmups 1 --repeats 7 --memory
+
+# Automatische Backendentscheidung für einen großen Batch
+python benchmark/run_profiles.py --profile large --backend auto --warmups 1 --repeats 7 --memory
+
+# JSON-Ergebnis für Vergleich oder CI
+python benchmark/run_profiles.py --profile medium --backend auto --json
+```
+
+| Profil | Anzahl | Länge | PBKDF2-Iterationen |
+|---|---:|---:|---:|
+| `single` | 1 | 24 | 200.000 |
+| `small` | 8 | 24 | 200.000 |
+| `medium` | 128 | 32 | 200.000 |
+| `large` | 1.024 | 32 | 200.000 |
+
+Die interaktive Beta begrenzt die Batchgröße auf **10.000 Passwörter**, um versehentliche lokale CPU-/RAM-Überlastung zu vermeiden.
+
+## Lokale Systemdatei-Mischung
+
+PW-Tool kann zusätzlich drei bis fünf feste, nicht sensitive lokale Systemdateien lesen, in 64-KiB-Blöcken hashen und über HMAC-SHA-512 mit frischem OS-Zufall kombinieren. Das ist eine **optionale Zusatzmischung**, keine geheime Entropiequelle und kein Ersatz für den OS-CSPRNG. Weniger als drei lesbare Quellen führen zu einem sicheren, sichtbaren Fallback auf OS-Zufall.
+
+| Plattform | Feste Kandidaten |
+|---|---|
+| macOS | Systemversion, Zeitzonendateien, CoreFoundation, Hosts-Datei |
+| Windows | System-DLLs, Hosts-Datei, `win.ini` |
+| Linux | `/etc/os-release`, `/proc/version`, Zeitzonendateien, Hosts-Datei |
+| Android-Terminal | Öffentliche Systemkonfigurationsdateien, soweit die Sandbox sie erlaubt |
+
+## Prüfen
+
+```bash
+# Syntax aller Module
+python -m py_compile *.py backends/*.py benchmark/*.py tests/*.py
+
+# Vollständige Unit- und Regressionstests
+python -m unittest discover -v
+
+# Bestehende Korrektheits-/Laufzeitprüfung
+python verify_entropy.py
+```
+
+## Projektstruktur
+
+```text
+pw.py                    Interaktiver CLI-Einstieg, -log-Option und --version
+version.py               Zentrale private-Beta-Version
+pyproject.toml           Deklarative Paket- und Konsolenmetadaten
+profiles.py              Zwei wirksame, nicht persistierte Beta-Optionen
+dispatcher.py            GPU-first-Kandidat mit CPU-/ARM64-Fallback
+backends/                Gemeinsame Schnittstelle sowie CPU-/CUDA-Backends
+benchmark/               Profile, Perzentile, Warm-up-Runner und Benchmark-CLI
+diagnostics.py           Whitelist-basierter, secret-freier Opt-in-Logger
+password_engine.py       HMAC-/Rejection-Sampling-Passwortableitung
+cpu_engine.py            OS-CSPRNG, Systemmix und CPU-PBKDF2
+cuda_engine.py           CUDA-Detection und getrennte Diagnosephasen
+system_mix.py            Lokale feste Zusatzmischung
+audit/                   Architektur-Baseline und GitHub-Gem-Bewertung
+tests/                   Dispatcher-, Logger-, Backend- und Benchmarktests
+```
+
+## Verifizierungsgrenzen
+
+Die im Repository vorhandene Linux-x86-64-CPU wurde getestet. Eine RTX 4070 SUPER, Windows, macOS und Android-ARM64 standen in der aktuellen Ausführungsumgebung nicht zur Verfügung. Für diese Ziele werden daher keine Leistungs- oder Energieversprechen behauptet. Die Benchmark-Befehle und die `-log`-Metriken dienen dazu, die Backendentscheidung auf echter Zielhardware nachzuvollziehen.
+
+## Quellen
+
+[1] [psf/pyperf – Python benchmark toolkit](https://github.com/psf/pyperf)
+
+[2] [CuPy – GPU array library with CUDA events and streams](https://github.com/cupy/cupy)
+
+[3] [nvitop – NVML-based NVIDIA monitoring](https://github.com/XuehaiPan/nvitop)
+
+[4] [Python documentation: `secrets`](https://docs.python.org/3/library/secrets.html)
+
+[5] [Python documentation: `hashlib`](https://docs.python.org/3/library/hashlib.html)

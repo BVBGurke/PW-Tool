@@ -1,87 +1,68 @@
-"""
-CPU-Based Entropy Generation (Fallback for no CUDA).
+"""CPU-basierte Entropieerzeugung für PW-Tool."""
 
-This module provides CPU-only entropy derivation using standard hashlib PBKDF2.
-Used when CUDA is unavailable or as a backup for reliable password generation.
-"""
+from __future__ import annotations
 
 import hashlib
 import os
 from typing import Optional
 
+from system_mix import SystemMixResult, mix_entropy
+
 
 class CPUEngine:
-    """Manages CPU-based entropy operations."""
+    """Verwaltet lokale, CPU-basierte Entropieoperationen."""
 
     @staticmethod
     def cpu_entropy_pbkdf2(
         iterations: int = 200000,
-        hash_length: int = 64
+        hash_length: int = 64,
+        system_mix: Optional[SystemMixResult] = None,
     ) -> bytes:
+        """Leitet Entropie mit PBKDF2-HMAC-SHA512 ab.
+
+        ``system_mix`` ist optional. Ein vollständiger Mix wird mittels HMAC mit
+        frischem OS-Zufall kombiniert; bei unvollständigen Quellen verbleibt die
+        Methode sicher beim ursprünglichen Zufallspfad.
         """
-        Generate high-entropy bytes using CPU PBKDF2-HMAC-SHA512.
-        
-        Args:
-            iterations: Number of PBKDF2 iterations
-            hash_length: Output length in bytes (default 64 for SHA512)
-            
-        Returns:
-            64 bytes of cryptographic entropy.
-        """
-        # Generate seed and salt from OS entropy
         seed = os.urandom(32)
+        if system_mix is not None:
+            seed = mix_entropy(seed, system_mix)
         salt = os.urandom(32)
-        
-        # PBKDF2-HMAC-SHA512 with configurable iterations
-        entropy = hashlib.pbkdf2_hmac(
-            'sha512',
+
+        return hashlib.pbkdf2_hmac(
+            "sha512",
             seed,
             salt,
             iterations,
-            dklen=hash_length
+            dklen=hash_length,
         )
-        
-        return entropy
 
     @staticmethod
-    def cpu_raw_entropy(size: int = 64) -> bytes:
-        """
-        Generate raw entropy bytes from OS entropy pool.
-        
-        Args:
-            size: Number of bytes to generate
-            
-        Returns:
-            Random bytes from os.urandom.
-        """
-        return os.urandom(size)
+    def cpu_raw_entropy(
+        size: int = 64,
+        system_mix: Optional[SystemMixResult] = None,
+    ) -> bytes:
+        """Gibt lokale OS-Entropie zurück und mischt sie optional sicher."""
+        entropy = os.urandom(size)
+        if system_mix is None:
+            return entropy
+        return mix_entropy(entropy, system_mix)[:size]
 
     @staticmethod
     def scale_iterations_for_mode(
         base_iterations: int = 200000,
         overkill: bool = False,
-        multiplier: float = 5.0
+        multiplier: float = 5.0,
     ) -> int:
-        """
-        Scale iteration count for normal vs. overkill mode.
-        
-        Args:
-            base_iterations: Base iteration count for normal mode
-            overkill: If True, multiply by multiplier
-            multiplier: Multiplier for overkill mode (default 5x)
-            
-        Returns:
-            Scaled iteration count.
-        """
+        """Skaliert die historische optionale Zusatzarbeit."""
         if overkill:
             return int(base_iterations * multiplier)
         return base_iterations
 
 
-# Global singleton instance
 _cpu_engine = CPUEngine()
 
 
 def get_cpu_engine() -> CPUEngine:
-    """Return the global CPU engine instance."""
+    """Gibt die Singleton-CPU-Engine zurück."""
     return _cpu_engine

@@ -1,126 +1,134 @@
-"""
-GPU-Accelerated Entropy Generation using CUDA (CuPy).
+"""Optionale CUDA-Entropiequelle mit messbarer CPU-Fallback-Kompatibilität.
 
-This module provides GPU-based entropy derivation using PBKDF2-HMAC-SHA512
-and cuRAND for high-performance password generation.
-If CUDA is unavailable, it gracefully indicates failure for CPU fallback.
+Wichtig: Die aktuelle Passwort-KDF nutzt ``hashlib.pbkdf2_hmac`` und läuft damit
+auf der CPU. Dieses Modul misst GPU-Zufallserzeugung und CPU-KDF getrennt, statt
+eine nicht vorhandene GPU-PBKDF2-Beschleunigung zu behaupten.
 """
+
+from __future__ import annotations
 
 import hashlib
-from typing import Tuple, Optional
+import os
+from time import perf_counter
+from typing import Mapping, Optional, Tuple
+
+from system_mix import SystemMixResult, mix_entropy
 
 
 class CUDAEngine:
-    """Manages CUDA detection and GPU-accelerated entropy operations."""
+    """Verwaltet optionale CuPy-/CUDA-Erkennung und Entropieerzeugung."""
 
-    def __init__(self):
-        """Initialize CUDA engine and detect availability."""
+    def __init__(self) -> None:
+        self.cupy = None
         self.available = False
         self.device_name = ""
         self.error_msg = ""
-        self.cupy = None
+        self.secure_password_generation_supported = False
         self._detect_cuda()
 
     def _detect_cuda(self) -> None:
-        """Detect CUDA availability and initialize CuPy."""
         try:
             import cupy as cp
-            
-            # Verify CUDA is accessible
-            device_id = cp.cuda.runtime.getDevice()
-            device_props = cp.cuda.runtime.getDeviceProperties(device_id)
-            self.device_name = device_props["name"].decode("utf-8")
+
+            device = cp.cuda.Device()
+            properties = cp.cuda.runtime.getDeviceProperties(device.id)
+            name = properties.get("name", b"CUDA device")
+            self.device_name = name.decode() if isinstance(name, bytes) else str(name)
             self.cupy = cp
             self.available = True
-            
-        except ImportError:
-            self.error_msg = "CuPy not installed. Install with: pip install cupy-cuda12x (or cupy-cuda13x)"
+        except Exception as error:
             self.available = False
-        except Exception as e:
-            self.error_msg = f"CUDA initialization failed: {type(e).__name__}: {str(e)}"
-            self.available = False
+            self.error_msg = str(error)
 
     def get_status(self) -> Tuple[bool, str, str]:
-        """
-        Return CUDA availability status.
-        
-        Returns:
-            (is_available, device_name, error_message)
-        """
+        """Gibt Hardwareverfügbarkeit, Gerätenamen und ggf. Fehlerbeschreibung zurück."""
         return self.available, self.device_name, self.error_msg
+
+    def can_generate_secure_passwords(self) -> bool:
+        """CUDA ist erst nach einer auditierten CSPRNG-/KDF-Implementierung zulässig."""
+        return self.available and self.secure_password_generation_supported
 
     def gpu_entropy_pbkdf2(
         self,
         iterations: int = 200000,
-        hash_length: int = 64
+        hash_length: int = 64,
+        system_mix: Optional[SystemMixResult] = None,
     ) -> Optional[bytes]:
-        """
-        Generate high-entropy bytes using GPU-accelerated PBKDF2-HMAC-SHA512.
-        
-        Args:
-            iterations: Number of PBKDF2 iterations (GPU parallelized)
-            hash_length: Output length in bytes (default 64 for SHA512)
-            
-        Returns:
-            64 bytes of cryptographic entropy, or None if GPU unavailable.
-        """
-        if not self.available or not self.cupy:
-            return None
+        """Kompatibilitätswrapper ohne Metrikrückgabe."""
+        entropy, _ = self.gpu_entropy_pbkdf2_profiled(
+            iterations=iterations,
+            hash_length=hash_length,
+            system_mix=system_mix,
+        )
+        return entropy
 
+    def gpu_entropy_pbkdf2_profiled(
+        self,
+        iterations: int = 200000,
+        hash_length: int = 64,
+        system_mix: Optional[SystemMixResult] = None,
+    ) -> tuple[Optional[bytes], Mapping[str, float]]:
+        """Erzeugt GPU-Zufallsbytes und misst die CPU-KDF getrennt.
+
+        Die Metrik ``cuda_seed_and_salt`` enthält den kompletten CuPy-/Transfer-
+        Abschnitt. ``cpu_pbkdf2`` ist bewusst separat, weil ``hashlib`` keinen
+        CUDA-Kernel ausführt.
+        """
+        if not self.can_generate_secure_passwords() or self.cupy is None:
+            return None, {}
+
+        timings: dict[str, float] = {}
         try:
-            cp = self.cupy
-            
-            # Generate seed and salt on GPU using cuRAND
-            seed = bytes(cp.random.bytes(32))
-            salt = bytes(cp.random.bytes(32))
-            
-            # PBKDF2-HMAC-SHA512 on CPU with GPU-generated entropy
-            # (SHA512 itself is CPU-bound; GPU provides random seed variance)
+            # OS-CSPRNG ist für Passwortseeds zwingend. Ein nicht auditiertes
+            # CuPy-RNG darf nicht als kryptografische Entropiequelle dienen.
+            start = perf_counter()
+            seed = os.urandom(32)
+            salt = os.urandom(32)
+            timings["os_csprng"] = perf_counter() - start
+
+            if system_mix is not None:
+                start = perf_counter()
+                seed = mix_entropy(seed, system_mix)
+                timings["system_mix_hmac"] = perf_counter() - start
+
+            start = perf_counter()
             entropy = hashlib.pbkdf2_hmac(
-                'sha512',
+                "sha512",
                 seed,
                 salt,
                 iterations,
-                dklen=hash_length
+                dklen=hash_length,
             )
-            
-            return entropy
-            
-        except Exception as e:
-            self.error_msg = f"GPU entropy generation failed: {str(e)}"
-            return None
+            timings["cpu_pbkdf2"] = perf_counter() - start
+            return entropy, timings
+        except Exception as error:
+            self.error_msg = f"GPU entropy generation failed: {error}"
+            return None, timings
 
-    def gpu_raw_entropy(self, size: int = 64) -> Optional[bytes]:
-        """
-        Generate raw entropy bytes using GPU's cuRAND.
-        
-        Args:
-            size: Number of bytes to generate
-            
-        Returns:
-            Random bytes from GPU cuRAND, or None if GPU unavailable.
-        """
-        if not self.available or not self.cupy:
+    def gpu_raw_entropy(
+        self,
+        size: int = 64,
+        system_mix: Optional[SystemMixResult] = None,
+    ) -> Optional[bytes]:
+        """Gibt GPU-Zufall zurück und mischt ihn optional sicher."""
+        if not self.can_generate_secure_passwords() or self.cupy is None:
             return None
 
         try:
-            cp = self.cupy
-            
-            # Generate random bytes directly from GPU
-            entropy = bytes(cp.random.bytes(size))
-            return entropy
-            
-        except Exception as e:
-            self.error_msg = f"GPU raw entropy failed: {str(e)}"
+            entropy = os.urandom(size)
+            if system_mix is None:
+                return entropy
+            return mix_entropy(entropy, system_mix)[:size]
+        except Exception as error:
+            self.error_msg = f"GPU raw entropy generation failed: {error}"
             return None
 
 
-# Global singleton instance
-_cuda_engine = None
+_cuda_engine: Optional[CUDAEngine] = None
 
 
 def get_cuda_engine() -> CUDAEngine:
-    """Lazy-load and return the global CUDA engine instance."""
+    """Lädt die CUDA-Engine erst beim ersten Zugriff."""
     global _cuda_engine
     if _cuda_engine is None:
         _cuda_engine = CUDAEngine()
