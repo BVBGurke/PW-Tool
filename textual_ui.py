@@ -201,7 +201,7 @@ class PwToolTextualApp(App[None]):
             yield Static("Bereit. Die Erzeugung läuft lokal.", id="status")
             yield Static("Noch keine Passwörter erzeugt.", id="backend")
             yield Static("", id="metrics")
-            yield Static("Noch keine Ergebnisse.", id="results")
+            yield Static("Noch keine Ergebnisse.", id="results", markup=False)
         yield Footer()
 
     def on_mount(self) -> None:
@@ -323,7 +323,7 @@ class PwToolTextualApp(App[None]):
             f"Systemmix: {result.system_mix.status.value} ({result.system_mix.source_count} Quellen)"
         )
         self.query_one("#results", Static).update(
-            "[bold]Generierte Passwörter[/bold]\n"
+            "Generierte Passwörter\n"
             + "\n".join(f"{index}: {value}" for index, value in enumerate(result.passwords, 1))
         )
         metrics = self.query_one("#show-metrics", Checkbox).value

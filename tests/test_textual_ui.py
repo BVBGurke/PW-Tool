@@ -19,7 +19,7 @@ class TextualUiTests(unittest.IsolatedAsyncioTestCase):
         system_mix_enabled: bool,
         _profiles: object,
     ) -> tuple[GenerationResult, BackendDecision]:
-        value = ("Ab9" * ((length + 2) // 3))[:length]
+        value = ("Ab9[mark]*" * ((length + 9) // 10))[:length]
         result = GenerationResult(
             passwords=[value for _ in range(count)],
             backend=BackendKind.CPU,
@@ -36,9 +36,9 @@ class TextualUiTests(unittest.IsolatedAsyncioTestCase):
             log_enabled=False,
         )
 
-    async def test_compact_layout_and_full_result_text(self) -> None:
+    async def test_compact_layout_and_full_result_text_with_markup_characters(self) -> None:
         app = self._app()
-        expected = ("Ab9" * 22)[:64]
+        expected = ("Ab9[mark]*" * 7)[:64]
 
         async with app.run_test(size=(40, 28)) as pilot:
             await pilot.pause()
