@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pwtool-backend"
+version = "0.2.0b1"
+description = "LAN-begrenztes FastAPI-Backend für PW-Tool"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.141,<1",
+    "uvicorn[standard]>=0.52,<1",
+    "cryptography>=45,<51",
+]
+
+[tool.setuptools]
+packages = ["pwtool", "pwtool.core"]

@@ -1,8 +1,0 @@
-# Optional: reproduzierbare, statistische Python-Benchmarks
-pyperf>=2.8,<3
-
-# Optional auf NVIDIA-CUDA-12-Systemen: CuPy-Backend/Profiling
-# cupy-cuda12x
-
-# Optional für externe NVIDIA-NVML-Diagnose auf echter GPU-Hardware
-# nvitop

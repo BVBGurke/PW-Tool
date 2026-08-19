@@ -12,3 +12,10 @@ diagnostics/
 .DS_Store
 .idea/
 .vscode/
+.pwtool.local.json
+data/
+frontend/node_modules/
+frontend/dist/
+website/node_modules/
+website/dist/
+*.tsbuildinfo
