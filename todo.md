@@ -10,3 +10,6 @@
 - [x] Getrennte Website-Quelle und GitHub-Pages-Strategie einrichten.
 - [x] Tests, Dokumentation, Build- und Startanleitungen aktualisieren.
 - [ ] Vollständige Qualitätsprüfung, Commit und GitHub-Push ausführen.
+- [ ] Vorhandenen SSH-Zugriff prüfen oder einen repository-spezifischen öffentlichen Schlüssel zur Registrierung vorbereiten.
+- [ ] Git-Remote auf die bestätigte SSH-Adresse umstellen und den Schreibzugriff validieren.
+- [ ] Workflowvorlagen nach `.github/workflows/` verschieben und mit SSH veröffentlichen.
