@@ -48,7 +48,7 @@ Danach läuft die API standardmäßig unter `http://127.0.0.1:8000`; die React-A
 
 ### Termux-Hinweis
 
-`setup-termux.sh` installiert `pnpm` bei Bedarf über das mit Node.js gelieferte `npm`; ein Paket namens `pnpm` wird in Termux nicht vorausgesetzt. Für die AES-GCM-Verschlüsselung installiert das Skript außerdem das Termux-Systempaket `python-cryptography`, prüft dessen `AESGCM`-Import und erzeugt die Virtualenv mit Systempaketzugriff neu. Dadurch wird kein inkompatibles pip-Android-Wheel für `cryptography` verwendet. Wenn Node.js bereits vorhanden ist, bleibt es erhalten. Führe daher einfach `bash setup-termux.sh` aus und starte erst danach Backend und Frontend über getrennte Termux-Tabs.
+`setup-termux.sh` installiert `pnpm` bei Bedarf über das mit Node.js gelieferte `npm`; ein Paket namens `pnpm` wird in Termux nicht vorausgesetzt. Für die AES-GCM-Verschlüsselung installiert das Skript außerdem das Termux-Systempaket `python-cryptography`, prüft dessen `AESGCM`-Import und erzeugt die Virtualenv mit Systempaketzugriff neu. Scheitert der normale Termux-Python-3.14-Import, wird ausschließlich nach einem erfolgreichen Test `$PREFIX/lib/libpython3.so` gezielt per `LD_PRELOAD` verwendet. Dadurch wird kein inkompatibles pip-Android-Wheel für `cryptography` verwendet und es gibt keinen globalen Preload. Wenn Node.js bereits vorhanden ist, bleibt es erhalten. Danach startet **ein einzelner Befehl** den lokalen Stack: `./start-termux.sh`.
 
 ## TLS-geschützter LAN-Betrieb
 

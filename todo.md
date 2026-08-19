@@ -13,6 +13,7 @@
 - [ ] Geprüften Modernisierungsstand committen und per SSH nach GitHub pushen.
 - [x] Termux-Setup korrigieren: kein nicht vorhandenes `pkg install pnpm`, stattdessen Node.js-/npm-basierter pnpm-Weg.
 - [x] Termux-Python-3.14-Kompatibilität für die AES-GCM-Abhängigkeit `cryptography` korrigieren; Systempaket und frische Virtualenv vermeiden inkompatible pip-Wheels.
+- [x] Termux-System-cryptography mit gezieltem, geprüftem libpython-Preload-Fallback starten und `start-termux.sh` ohne Argument auf den vollständigen Stack umstellen.
 - [x] Vorhandenen SSH-Zugriff prüfen und repository-spezifischen Deploy-Key mit Schreibzugriff validieren.
 - [x] Git-Remote auf die bestätigte SSH-Adresse umstellen und den Schreibzugriff validieren.
 - [x] Workflows nach `.github/workflows/` verschieben und mit SSH veröffentlichen.

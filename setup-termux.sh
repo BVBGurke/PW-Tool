@@ -3,10 +3,9 @@ set -eu
 
 pkg install -y python python-cryptography
 
-if ! python -c 'from cryptography.hazmat.primitives.ciphers.aead import AESGCM' >/dev/null 2>&1; then
-  printf '%s\n' 'Das Termux-Systempaket python-cryptography konnte AESGCM nicht importieren. Aktualisiere Termux-Pakete und versuche es erneut.' >&2
-  exit 1
-fi
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+. "$ROOT/scripts/termux_python_runtime.sh"
+pwtool_configure_termux_python || exit 1
 
 if ! command -v node >/dev/null 2>&1; then
   pkg install -y nodejs-lts || pkg install -y nodejs
@@ -23,6 +22,5 @@ if ! command -v pnpm >/dev/null 2>&1; then
 fi
 
 pnpm --version
-ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 rm -rf "$ROOT/.venv"
 PWTOOL_USE_SYSTEM_SITE_PACKAGES=1 exec "$ROOT/setup.sh"
