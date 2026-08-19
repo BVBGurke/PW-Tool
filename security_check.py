@@ -36,7 +36,7 @@ class PasswordSecurityReport:
                 "Sicherheitscheck (nur lokal)",
                 f"Profil: {self.profile_name}",
                 f"Passwörter: {self.password_count}; kürzeste Länge: {self.minimum_length}",
-                f"Zeichenvorrat: {self.alphabet_size} Zeichen; geschätzt: ca. {self.estimated_entropy_bits:.0f} Bit",
+                f"Zeichenvorrat: {self.alphabet_size} Zeichen; konservative Untergrenze: ca. {self.estimated_entropy_bits:.0f} Bit",
                 f"Zeichenklassen je Passwort vorhanden: {class_status}; unterschiedliche Werte: {distinct_status}",
                 f"Bewertung: {self.rating}",
                 f"Hinweis: {self.advice}",
@@ -60,6 +60,24 @@ def _has_expected_classes(password: str, charset: CharacterSet) -> bool:
     return has_lower and has_upper and has_digit and has_special
 
 
+def _conservative_entropy_bits(
+    minimum_length: int,
+    alphabet_size: int,
+    charset: CharacterSet,
+) -> float:
+    """Berechnet eine konservative Untergrenze für die Generator-Konstruktion."""
+    if charset is not CharacterSet.MAXIMUM:
+        return minimum_length * math.log2(alphabet_size)
+
+    required_classes = (
+        len(PasswordGenerator._LOWERCASE)
+        * len(PasswordGenerator._UPPERCASE)
+        * len(PasswordGenerator._DIGITS)
+        * len(PasswordGenerator._SPECIALS)
+    )
+    return math.log2(required_classes) + (minimum_length - 4) * math.log2(alphabet_size)
+
+
 def assess_generated_passwords(
     passwords: tuple[str, ...],
     charset: CharacterSet,
@@ -76,7 +94,11 @@ def assess_generated_passwords(
 
     alphabet_size = len(PasswordGenerator.get_character_set(charset))
     minimum_length = min(len(password) for password in passwords)
-    estimated_entropy_bits = minimum_length * math.log2(alphabet_size)
+    estimated_entropy_bits = _conservative_entropy_bits(
+        minimum_length,
+        alphabet_size,
+        charset,
+    )
     all_distinct = len(set(passwords)) == len(passwords)
     all_passwords_have_expected_classes = all(
         _has_expected_classes(password, charset) for password in passwords

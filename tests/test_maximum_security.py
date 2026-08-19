@@ -32,6 +32,9 @@ class MaximumSecurityGeneratorTests(unittest.TestCase):
         self.assertTrue(report.all_distinct)
         self.assertTrue(report.all_passwords_have_expected_classes)
         self.assertIn("direkter OS-CSPRNG", report.as_text())
+        self.assertIn("konservative Untergrenze", report.as_text())
+        self.assertGreater(report.estimated_entropy_bits, 190)
+        self.assertLess(report.estimated_entropy_bits, 195)
         self.assertTrue(all(password not in report.as_text() for password in passwords))
 
     def test_rejection_sampling_discards_out_of_range_byte(self) -> None:
