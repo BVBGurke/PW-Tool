@@ -19,8 +19,14 @@ from textual.widgets import Button, Checkbox, Footer, Header, Input, Label, Sele
 
 from backends.base import GenerationResult, MAX_BATCH_COUNT
 from dispatcher import BackendDecision
-from password_engine import CharacterSet, PasswordGenerator
+from password_engine import (
+    CharacterSet,
+    MAX_PASSWORD_LENGTH,
+    MIN_PASSWORD_LENGTH,
+    PasswordGenerator,
+)
 from profiles import ProfileOption, SessionProfiles
+from security_check import assess_generated_passwords
 
 
 GenerationCallback = Callable[
@@ -60,9 +66,14 @@ class PwToolTextualApp(App[None]):
         margin: 1 2;
     }
 
-    #runtime-status, #status, #backend, #metrics {
+    #runtime-status, #status, #backend, #metrics, #security-check {
         height: auto;
         margin: 0 0 1 0;
+    }
+
+    #security-check {
+        border: round #5e9cff;
+        padding: 1;
     }
 
     #configuration {
@@ -86,8 +97,8 @@ class PwToolTextualApp(App[None]):
         margin: 1 0;
     }
 
-    #generate, #copy {
-        min-width: 22;
+    #generate, #copy, #check, #clear {
+        min-width: 18;
         margin: 0 1;
     }
 
@@ -104,7 +115,14 @@ class PwToolTextualApp(App[None]):
 
     .compact #main {
         width: 100%;
+        height: 1fr;
         margin: 0;
+        padding: 0 1;
+        overflow-y: auto;
+    }
+
+    .compact #runtime-status {
+        margin-top: 1;
     }
 
     .compact #configuration {
@@ -117,8 +135,9 @@ class PwToolTextualApp(App[None]):
         align-horizontal: center;
     }
 
-    .compact #generate, .compact #copy {
+    .compact #generate, .compact #copy, .compact #check, .compact #clear {
         width: 1fr;
+        min-height: 3;
         margin: 0 0 1 0;
     }
 
@@ -130,6 +149,8 @@ class PwToolTextualApp(App[None]):
     BINDINGS = [
         Binding("ctrl+g", "generate", "Erzeugen", show=True),
         Binding("ctrl+c", "copy_passwords", "Kopieren", show=True),
+        Binding("ctrl+s", "check_passwords", "Prüfen", show=True),
+        Binding("ctrl+l", "clear_passwords", "Löschen", show=True),
         Binding("ctrl+q", "quit", "Beenden", show=True),
     ]
 
@@ -161,7 +182,9 @@ class PwToolTextualApp(App[None]):
             yield Static("[bold]Konfiguration[/bold] – Werte einmal einstellen und mit „Erzeugen“ erneut verwenden.")
             with Grid(id="configuration"):
                 with Vertical(classes="field"):
-                    yield Label("Passwortlänge (8–256)")
+                    yield Label(
+                        f"Passwortlänge ({MIN_PASSWORD_LENGTH}–{MAX_PASSWORD_LENGTH})"
+                    )
                     yield Input("64", id="password-length", type="integer")
                 with Vertical(classes="field"):
                     yield Label(f"Anzahl der Passwörter (1–{MAX_BATCH_COUNT})")
@@ -198,9 +221,12 @@ class PwToolTextualApp(App[None]):
             with Horizontal(id="actions"):
                 yield Button("Passwörter erzeugen", id="generate", variant="primary")
                 yield Button("Ergebnis kopieren", id="copy", disabled=True)
+                yield Button("Sicherheitscheck", id="check", disabled=True)
+                yield Button("Ergebnisse löschen", id="clear", disabled=True)
             yield Static("Bereit. Die Erzeugung läuft lokal.", id="status")
             yield Static("Noch keine Passwörter erzeugt.", id="backend")
             yield Static("", id="metrics")
+            yield Static("Noch kein Sicherheitscheck durchgeführt.", id="security-check", markup=False)
             yield Static("Noch keine Ergebnisse.", id="results", markup=False)
         yield Footer()
 
@@ -219,6 +245,10 @@ class PwToolTextualApp(App[None]):
             self.action_generate()
         elif event.button.id == "copy":
             self.action_copy_passwords()
+        elif event.button.id == "check":
+            self.action_check_passwords()
+        elif event.button.id == "clear":
+            self.action_clear_passwords()
 
     def action_generate(self) -> None:
         form = self._read_form()
@@ -240,6 +270,35 @@ class PwToolTextualApp(App[None]):
             )
         else:
             self.query_one("#status", Static).update("[green]Ergebnis in die Zwischenablage kopiert.[/green]")
+
+    def action_check_passwords(self) -> None:
+        """Bewertet nur nicht sensible Merkmale der letzten lokalen Ergebnisse."""
+        if not self._last_passwords:
+            self.query_one("#status", Static).update(
+                "[yellow]Für den Sicherheitscheck zuerst Passwörter erzeugen.[/yellow]"
+            )
+            return
+
+        charset = CharacterSet(str(self.query_one("#charset", Select).value))
+        report = assess_generated_passwords(self._last_passwords, charset)
+        self.query_one("#security-check", Static).update(report.as_text())
+        self.query_one("#status", Static).update(
+            "[green]Sicherheitscheck lokal abgeschlossen; keine Passwortwerte gespeichert.[/green]"
+        )
+
+    def action_clear_passwords(self) -> None:
+        """Entfernt die letzte Ausgabe aus sichtbaren Widgets und dem App-Zustand."""
+        self._last_passwords = ()
+        self.query_one("#copy", Button).disabled = True
+        self.query_one("#check", Button).disabled = True
+        self.query_one("#clear", Button).disabled = True
+        self.query_one("#results", Static).update("Ergebnisse aus der Oberfläche entfernt.")
+        self.query_one("#security-check", Static).update(
+            "Sicherheitscheck zurückgesetzt; keine Passwortwerte im UI-Zustand."
+        )
+        self.query_one("#status", Static).update(
+            "[green]Ergebnisse aus der Oberfläche entfernt.[/green]"
+        )
 
     def _read_form(self) -> GenerationForm | None:
         length_input = self.query_one("#password-length", Input)
@@ -266,7 +325,7 @@ class PwToolTextualApp(App[None]):
             invalid = True
         if invalid:
             self.query_one("#status", Static).update(
-                f"[red]Länge muss 8–256 und Anzahl 1–{MAX_BATCH_COUNT} sein.[/red]"
+                f"[red]Länge muss {MIN_PASSWORD_LENGTH}–{MAX_PASSWORD_LENGTH} und Anzahl 1–{MAX_BATCH_COUNT} sein.[/red]"
             )
             return None
 
@@ -314,6 +373,11 @@ class PwToolTextualApp(App[None]):
         self.query_one("#generate", Button).disabled = False
         self._last_passwords = tuple(result.passwords)
         self.query_one("#copy", Button).disabled = not bool(self._last_passwords)
+        self.query_one("#check", Button).disabled = not bool(self._last_passwords)
+        self.query_one("#clear", Button).disabled = not bool(self._last_passwords)
+        self.query_one("#security-check", Static).update(
+            "Noch kein Sicherheitscheck durchgeführt."
+        )
         self.query_one("#status", Static).update(
             f"[green]{len(result.passwords)} Passwort/Passwörter lokal erzeugt.[/green]"
         )

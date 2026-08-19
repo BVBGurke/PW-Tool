@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Mapping, Protocol
 
-from password_engine import CharacterSet
+from password_engine import CharacterSet, MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH
 from system_mix import SystemMixResult
 
 
@@ -31,8 +31,10 @@ class GenerationRequest:
     def __post_init__(self) -> None:
         if self.password_count < 1 or self.password_count > MAX_BATCH_COUNT:
             raise ValueError(f"password_count must be in range 1..{MAX_BATCH_COUNT}")
-        if self.password_length < 8 or self.password_length > 256:
-            raise ValueError("password_length must be in range 8..256")
+        if not MIN_PASSWORD_LENGTH <= self.password_length <= MAX_PASSWORD_LENGTH:
+            raise ValueError(
+                f"password_length must be in range {MIN_PASSWORD_LENGTH}..{MAX_PASSWORD_LENGTH}"
+            )
         if self.iterations < 1:
             raise ValueError("iterations must be at least one")
 

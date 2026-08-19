@@ -20,6 +20,10 @@ class CharacterSet(Enum):
     COMPLETE = "complete"
 
 
+MIN_PASSWORD_LENGTH = 16
+MAX_PASSWORD_LENGTH = 256
+
+
 class PasswordGenerator:
     """Leitet Passwörter lokal und effizient aus einem Entropieseed ab."""
 
@@ -30,8 +34,8 @@ class PasswordGenerator:
 
     @staticmethod
     def validate_length(length: int) -> bool:
-        """Prüft die unterstützte Passwortlänge von 8 bis 256 Zeichen."""
-        return 8 <= length <= 256
+        """Prüft die sicherheitsorientierte Länge von 16 bis 256 Zeichen."""
+        return MIN_PASSWORD_LENGTH <= length <= MAX_PASSWORD_LENGTH
 
     @staticmethod
     def get_character_set(charset: CharacterSet) -> str:
@@ -53,7 +57,9 @@ class PasswordGenerator:
         wirkt sich eine Änderung im Systemmix auf das resultierende Passwort aus.
         """
         if not PasswordGenerator.validate_length(length):
-            raise ValueError(f"Length must be 8-256, got {length}")
+            raise ValueError(
+                f"Length must be {MIN_PASSWORD_LENGTH}-{MAX_PASSWORD_LENGTH}, got {length}"
+            )
         if not entropy:
             raise ValueError("Entropy must not be empty")
 

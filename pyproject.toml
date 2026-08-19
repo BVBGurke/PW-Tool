@@ -24,6 +24,7 @@ py-modules = [
     "password_engine",
     "profiles",
     "pw",
+    "security_check",
     "system_mix",
     "textual_ui",
     "version",

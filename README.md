@@ -32,25 +32,35 @@ Beim Start zeigt PW-Tool ein Textual-Formular. Passwortlänge, Anzahl, Zeichensa
 
 | Feld oder Option | Standard | Wirkung |
 |---|---:|---|
-| Passwortlänge | 64 | Erlaubt Werte von 8 bis 256 Zeichen. |
+| Passwortlänge | 64 | Erlaubt sicherheitsorientiert nur Werte von 16 bis 256 Zeichen. |
 | Anzahl | 1 | Erlaubt 1 bis 10.000 Passwörter pro Lauf. |
-| Zeichensatz | `alphanumeric` | Wählt den Zeichenvorrat der Passwortableitung. |
+| Zeichensatz | `normal` | Wählt den Zeichenvorrat der Passwortableitung. |
 | CUDA als Kandidat | Aktiv | Prüft CUDA für große Batches; der sichere CPU-/ARM64-Fallback bleibt verfügbar. |
 | Ergebnis-Metriken | Inaktiv | Zeigt nur nicht sensitive Phasenzeiten in der Ergebnisansicht. |
-| Systemmischung | Inaktiv | Aktiviert die dokumentierte, optionale lokale Zusatzmischung. |
+| Systemmischung | Aktiv | Aktiviert die dokumentierte, optionale lokale Zusatzmischung. |
 | Zusätzliche KDF-Arbeit | Inaktiv | Erhöht die lokale Rechenarbeit bewusst und kann die Laufzeit verlängern. |
+| Sicherheitscheck | Nach Erzeugung verfügbar | Bewertet nur lokale, nicht sensitive Merkmale des jüngsten Batches. |
+| Ergebnisse löschen | Nach Erzeugung verfügbar | Entfernt die letzte Ausgabe aus sichtbaren Widgets und dem App-Zustand. |
 
 Nicht sichtbare Zukunftsthemen wie Hybrid-Pipeline, Energieprofil oder CUDA-Warm-up sind **nicht** als Beta-Funktion implementiert und werden daher nicht auswählbar dargestellt.
 
 ### Schmale und mobile Terminals
 
-Bei einer Terminalbreite unter 72 Zeichen schaltet die Textual-Oberfläche auf eine **Kompaktansicht** mit vertikal angeordneten Bereichen. Status, Backendentscheidung und Ergebnisse bleiben verfügbar. Lange Passwörter werden gefaltet statt durch eine Ellipse abgeschnitten, sodass alle Zeichen sichtbar bleiben. Breite Terminals verwenden ein mehrspaltiges Desktop-Layout.
+Bei einer Terminalbreite unter 72 Zeichen schaltet die Textual-Oberfläche auf eine **Kompaktansicht** mit vertikal angeordneten Bereichen, großen vertikalen Aktionsschaltflächen und scrollbar gehaltenem Formular. Status, Backendentscheidung, Sicherheitscheck und Ergebnisse bleiben verfügbar. Lange Passwörter werden gefaltet statt durch eine Ellipse abgeschnitten, sodass alle Zeichen sichtbar bleiben. Breite Terminals verwenden ein mehrspaltiges Desktop-Layout.
 
 | Tastenkürzel | Funktion |
 |---|---|
 | `Strg+G` | Erzeugt Passwörter mit der aktuellen Sitzungskonfiguration. |
 | `Strg+C` | Kopiert die zuletzt erzeugten Passwörter, sofern die Zwischenablage verfügbar ist. |
+| `Strg+S` | Startet den lokalen Sicherheitscheck des jüngsten Batches. |
+| `Strg+L` | Entfernt die letzte Ausgabe aus sichtbaren Widgets und dem App-Zustand. |
 | `Strg+Q` | Beendet die Anwendung. |
+
+### Passwort-Sicherheitscheck
+
+Der Check verarbeitet ausschließlich die zuletzt lokal erzeugten Werte. Er zeigt **keine Passwortwerte** an und speichert, protokolliert oder überträgt nichts. Stattdessen bewertet er Anzahl, kürzeste Länge, Größe des gewählten Zeichenvorrats, eine theoretische Entropieschätzung, Zeichenklassen und Duplikate. Die Schätzung setzt den lokalen Zufallsgenerator und einen nicht wiederverwendeten Wert voraus; sie prüft weder externe Datenlecks noch die Sicherheit eines Zielservices.
+
+PW-Tool erzeugt seine Ausgangsentropie mit dem Betriebssystem-Zufallsgenerator, nutzt HMAC-SHA-512 mit Rejection Sampling und akzeptiert nur Längen ab **16 Zeichen**. Die zusätzliche KDF-Arbeit erhöht die Rechenzeit, aber nicht die Zufallsentropie. Ergebnisse löschen entfernt sie aus der Oberfläche und dem App-Zustand; das ist keine Zusage für ein forensisch sicheres Überschreiben des Prozessspeichers. [4] [5]
 
 ## CUDA: aktueller Sicherheits- und Performance-Status
 
@@ -137,11 +147,12 @@ backends/                Gemeinsame Schnittstelle sowie CPU-/CUDA-Backends
 benchmark/               Profile, Perzentile, Warm-up-Runner und Benchmark-CLI
 diagnostics.py           Whitelist-basierter, secret-freier Opt-in-Logger
 password_engine.py       HMAC-/Rejection-Sampling-Passwortableitung
+security_check.py         Lokale, passwortwertfreie Sicherheitsbewertung
 cpu_engine.py            OS-CSPRNG, Systemmix und CPU-PBKDF2
 cuda_engine.py           CUDA-Detection und getrennte Diagnosephasen
 system_mix.py            Lokale feste Zusatzmischung
 audit/                   Architektur-Baseline und GitHub-Gem-Bewertung
-tests/                   Dispatcher-, Logger-, Backend-, Benchmark- und Textual-Tests
+tests/                   Dispatcher-, Logger-, Backend-, Benchmark-, Sicherheits- und Textual-Tests
 ```
 
 ## Verifizierungsgrenzen

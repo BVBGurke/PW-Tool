@@ -49,17 +49,35 @@ class TextualUiTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn(expected, rendered)
             self.assertNotIn("…", rendered)
             self.assertTrue(app.query_one("#copy").disabled is False)
+            self.assertTrue(app.query_one("#check").disabled is False)
+            self.assertTrue(app.query_one("#clear").disabled is False)
+
+            app.action_check_passwords()
+            await pilot.pause()
+            security_report = str(app.query_one("#security-check").render())
+            self.assertIn("Sicherheitscheck (nur lokal)", security_report)
+            self.assertNotIn(expected, security_report)
+
+            app.action_clear_passwords()
+            await pilot.pause()
+            self.assertTrue(app.query_one("#copy").disabled)
+            self.assertTrue(app.query_one("#check").disabled)
+            self.assertTrue(app.query_one("#clear").disabled)
+            self.assertIn(
+                "Ergebnisse aus der Oberfläche entfernt.",
+                str(app.query_one("#results").render()),
+            )
 
     async def test_invalid_form_prevents_generation(self) -> None:
         app = self._app()
 
         async with app.run_test(size=(100, 32)) as pilot:
             await pilot.pause()
-            app.query_one("#password-length").value = "7"
+            app.query_one("#password-length").value = "15"
             app.action_generate()
             await pilot.pause()
             status = str(app.query_one("#status").render())
-            self.assertIn("Länge muss 8–256", status)
+            self.assertIn("Länge muss 16–256", status)
             self.assertIn("invalid", app.query_one("#password-length").classes)
 
 
