@@ -3,5 +3,7 @@
   "session_key": "GENERATED_BY_SETUP",
   "history_key": "GENERATED_BY_SETUP",
   "allowed_origins": "http://127.0.0.1:5173,http://localhost:5173",
-  "lan_enabled": false
+  "lan_enabled": false,
+  "cookie_secure": false,
+  "cookie_samesite": "lax"
 }

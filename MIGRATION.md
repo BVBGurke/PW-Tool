@@ -1,41 +1,16 @@
-# Migrationsarchitektur
+# Migrationsstatus
 
-## Zielbaum
+Die vorherige flache FastAPI-Implementierung unter `backend/pwtool/` wurde vollständig durch die strukturierte Anwendung unter `backend/app/` ersetzt. Die alte Textual-CLI bleibt bewusst nicht als parallele Produktoberfläche erhalten; ihre sicherheitsrelevanten Funktionsgrenzen wurden in der Feature-Matrix geprüft und in API, Services und React-App übernommen.
 
-```text
-backend/
-  pyproject.toml                 Python-Abhängigkeiten und FastAPI-Entrypoint
-  pwtool/
-    api/                         Routen für Authentisierung, Passworterzeugung und Verlauf
-    core/                        CSPRNG-Policy, Sicherheitscheck und lokale Hash-Demo
-    db/                          SQLite-Verbindung, Schema und Migrationslogik
-    security/                    Kontokennwort-KDF, Sessions und Verlaufverschlüsselung
-    app.py                       FastAPI-Anwendung mit enger CORS-/LAN-Konfiguration
-  tests/                         Backend- und API-Tests
-frontend/                        Vite/React/TypeScript-Anwendung für den Generator
-website/                         Vite/React/TypeScript-Projektwebsite für GitHub Pages
-scripts/                         Prüf- und Entwicklungshelfer
-start.sh / start.bat             Plattformstarter für Backend, Frontend und Stack
-start-termux.sh                  Android/Termux-Starter mit CPU-Kompatibilität
-setup.sh / setup.bat / setup-termux.sh
-                                 Bewusste Installation, Initialisierung und Secret-Erzeugung
-```
-
-## API- und Sicherheitsmodell
-
-| Komponente | Verantwortlichkeit | Begrenzung |
+| Früherer Bereich | Neue Position | Migrationsstatus |
 |---|---|---|
-| Authentisierung | Registrierung, Anmeldung, Abmeldung und Server-Sitzungen | Kennwörter mit gesalzener `hashlib.scrypt`-KDF; keine Klartextspeicherung. |
-| Sitzung | Opaques zufälliges Token im sicheren HTTP-only-Cookie | Token wird nur gehasht in SQLite abgelegt, hat Ablaufzeit und kann widerrufen werden. |
-| Passworterzeugung | Direkte OS-CSPRNG-Policy | Immer CPU/ARM64, keine CUDA- oder Fremdhash-Pfade. |
-| Verlauf | Opt-in-Speicherung verschlüsselter Passwortwerte | Pro Anwendung eigener lokaler AEAD-Schlüssel; Anzeige nur nach authentisierter Abfrage. |
-| CORS/LAN | Standard localhost, LAN nur per expliziter Konfiguration | Keine Wildcards; ein fehlendes LAN-Origin blockiert LAN-Start. |
-| GPU | Status und harmlose Benchmarks | Nicht Teil der Passwort-/KDF-Ausführung. |
+| CSPRNG-Passwortkern | `backend/app/core/password_policy.py` | Erhalten und isoliert testbar. |
+| Konten, KDF und Sessions | `security/`, `services/auth.py`, `repositories/` | Erhalten, geschichtet und durch API-Tests abgesichert. |
+| Datenbank und Verlauf | `repositories/`, `services/history.py`, `security/history_crypto.py` | Erhalten; IDOR-sichere Auswahl und Löschung getestet. |
+| Routen und Pydantic-Modelle | `api/routes/`, `schemas/` | Entkoppelt und auf `/api/v1` versioniert. |
+| Rate Limit, Origin und Header | `middleware/` | Zentralisiert. |
+| React-Monolith | `frontend/src/features/`, `api/`, `hooks/`, `types/` | In Fachbereiche aufgeteilt. |
+| Vorherige UI-Effekte | `components/react-bits/` | React-Bits-Integration mit Reduced-Motion-Fallback. |
+| Direkte LAN-Bindung | TLS-Reverse-Proxy-Modell | Bewusst entfernt, um unsichere HTTP-Sitzungen im LAN zu vermeiden. |
 
-## Konfigurationsvertrag
-
-`setup.*` erzeugt eine nicht eingecheckte lokale Konfigurationsdatei mit Datenbankpfad, Session- und Verlaufsverschlüsselungsschlüssel. `start.*` installiert keine Abhängigkeiten und startet standardmäßig nur an `127.0.0.1`. Für LAN muss der Betreiber explizit `PWTOOL_BIND=lan` und mindestens eine erlaubte Origin setzen.
-
-## Migrationsregel
-
-Die bisherigen Python-Module werden in das importierbare Paket `backend/pwtool/` überführt. Im Hauptordner bleiben ausschließlich klar gekennzeichnete Starter, Dokumentation, CI-Konfiguration und gegebenenfalls schlanke Kompatibilitätshinweise. `frontend/` und `website/` bekommen jeweils einen eigenen `pnpm-lock.yaml`, damit App- und Marketingabhängigkeiten nicht vermischt werden.
+Die vollständige Bestandsaufnahme und Funktionsparität ist in [`MODERNIZATION_BASELINE.md`](MODERNIZATION_BASELINE.md) festgehalten. Das verbindliche Zielmodell dokumentiert [`TARGET_ARCHITECTURE.md`](TARGET_ARCHITECTURE.md).

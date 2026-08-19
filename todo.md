@@ -9,7 +9,11 @@
 - [x] Nutzerkonten, Datenbankmigrationen, verschlüsselte Verlaufseinträge und lokale/LAN-Konfiguration implementieren.
 - [x] Getrennte Website-Quelle und GitHub-Pages-Strategie einrichten.
 - [x] Tests, Dokumentation, Build- und Startanleitungen aktualisieren.
-- [ ] Vollständige Qualitätsprüfung, Commit und GitHub-Push ausführen.
-- [ ] Vorhandenen SSH-Zugriff prüfen oder einen repository-spezifischen öffentlichen Schlüssel zur Registrierung vorbereiten.
-- [ ] Git-Remote auf die bestätigte SSH-Adresse umstellen und den Schreibzugriff validieren.
-- [ ] Workflowvorlagen nach `.github/workflows/` verschieben und mit SSH veröffentlichen.
+- [x] Vollständige Qualitätsprüfung mit 11 Backend-Regressionen, React- und Website-Build sowie Sicherheits-/Secret-Review ausführen.
+- [ ] Geprüften Modernisierungsstand committen und per SSH nach GitHub pushen.
+- [x] Vorhandenen SSH-Zugriff prüfen und repository-spezifischen Deploy-Key mit Schreibzugriff validieren.
+- [x] Git-Remote auf die bestätigte SSH-Adresse umstellen und den Schreibzugriff validieren.
+- [x] Workflows nach `.github/workflows/` verschieben und mit SSH veröffentlichen.
+- [x] Aktuellen Stand und relevante Git-Historie inventarisieren und eine vollständige Feature-Matrix erstellen.
+- [x] Backend-Schichten, Sicherheitsmodell und React-Bits-Integrationsmatrix gegen die bestätigten Anforderungen prüfen.
+- [x] Funktionsparität, React-Bits-Integration, Security-Review und Dokumentation vollständig validieren.

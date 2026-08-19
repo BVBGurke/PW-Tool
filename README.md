@@ -1,28 +1,42 @@
 # PW-Tool
 
-PW-Tool ist jetzt ein **Python- und React-Monorepo** für lokale Passworterzeugung und einen bewusst konfigurierten Betrieb in einem vertrauenswürdigen LAN. Das Repository trennt die FastAPI-Anwendung, die praktische React-Generator-App und die öffentliche Projektwebsite klar voneinander.
+PW-Tool ist ein **lokales Python- und React-Monorepo** für nachvollziehbare Passworterzeugung. Es verbindet eine FastAPI-API, eine React-/TypeScript-Anwendung und eine getrennte React-Projektwebsite. Der sichtbare Passwortpfad arbeitet direkt mit OS-CSPRNG auf der CPU; Cloud-Synchronisierung, öffentliche Bereitstellung und Crackfunktionen sind ausdrücklich ausgeschlossen.
 
-> **Sicherheitsmodell:** Standardmäßig lauscht das Backend nur auf `127.0.0.1`. Ein LAN-Betrieb ist möglich, aber ausschließlich nach expliziter Konfiguration von Konten, Datenbank und erlaubten Origins. Ein öffentlicher Internetdienst ist nicht Teil dieses Projekts.
+> **Betriebsgrenze:** Standardmäßig bindet PW-Tool nur an `127.0.0.1`. LAN-Nutzung ist nur hinter einem TLS-Reverse-Proxy, mit konkreten HTTPS-Origin(s), sicheren Cookies und lokaler Konten-/Datenbankkonfiguration zulässig. Der Starter bindet deshalb auch im LAN-Modus nicht direkt an das Netzwerkinterface.
 
-| Ordner | Zweck |
+| Bereich | Inhalt |
 |---|---|
-| `backend/` | FastAPI, OS-CSPRNG-Passwortpolicy, Konten, serverseitige Sitzungen, SQLite und verschlüsselter Opt-in-Verlauf. |
-| `frontend/` | Vite/React/TypeScript-App für Passworterzeugung, Kopieren, Sicherheitscheck, Verlauf und Hash-Demo. |
-| `website/` | Unabhängige Vite/React-Projektwebsite für GitHub Pages. |
-| `scripts/` | Konfigurations- und Qualitätshelfer. |
+| `backend/app/` | FastAPI v1, API-Routen, Services, reine CSPRNG-Policy, Security-, Middleware- und Repository-Schichten. |
+| `frontend/` | Vite, React und TypeScript; kontogeschützter Generator, Ergebnislöschung, opt-in Verlauf, Hash-Demo und Runtime-Status. |
+| `website/` | Unabhängige React-Projektwebsite für GitHub Pages; sie ruft keine lokale API auf. |
+| `scripts/` | Erzeugung der ignorierten lokalen Konfiguration und kontrollierte Laufzeitprüfung. |
+
+## Sicherheits- und Produktgrenzen
+
+Passwörter werden serverseitig über OS-CSPRNG erzeugt. Die Profile **Vollständig** und **Kompatibel** erzwingen Zeichenklassen, vermeiden Modulo-Bias durch Rejection Sampling und mischen Zeichenpositionen per CSPRNG-basiertem Fisher-Yates-Verfahren. Die sichtbare Maximalvoreinstellung nutzt 64 Zeichen mit vollständigem Zeichensatz.
+
+Kontokennwörter werden mit gesalzener speicherharter `scrypt`-KDF gespeichert. Browser erhalten ausschließlich ein zufälliges, serverseitig widerrufbares Sessiontoken als HTTP-only-Cookie; Rohwerte werden nicht im Client gespeichert. Der verschlüsselte Verlauf ist opt-in und bindet AES-GCM-Ciphertexte zusätzlich an das jeweilige Konto. API-Antworten mit sensiblen Daten erhalten `no-store`-Header.
+
+Die Hash-Demo akzeptiert nur Länge und Zeichensatz. Sie erzeugt einen frischen, nicht sichtbaren Demo-Wert, leitet einmalig `scrypt` ab und gibt ausschließlich Metadaten zurück. Sie verarbeitet keine Fremdhashes, Wortlisten oder Kandidatenlisten und bietet keine Rateversuche. CUDA ist keine Entropiequelle und kein Hash- oder Passwortpfad; der Runtime-Status weist dies explizit aus.
+
+## Architektur und UI
+
+Eine Anforderung fließt über **React-Feature → API-Client → FastAPI-Route → Service → Core/Security → Repository → SQLite**. Routen enthalten keine Krypto- oder SQL-Logik; Repositories kennen keine HTTP-Objekte. Domänenfehler werden zentral als redigierte `application/problem+json`-Antworten mit Request-ID übersetzt.
+
+Das Frontend ist nach Features und API-Bereichen gegliedert. Es verwendet quellbasiert übernommene, auf `prefers-reduced-motion` begrenzte React-Bits-Komponenten für ruhige Inhaltsübergänge, Statusbereiche und die Runtime-Sicherheitskarte. Semantische Felder, Dialoge und Fehlermeldungen bleiben bewusst zugänglich und tastaturbedienbar.
 
 ## Lokale Einrichtung
 
-Für Linux und macOS richtet `setup.sh` eine Python-Virtualenv, die Backend-Abhängigkeiten, beide pnpm-Projekte sowie eine lokale Geheimniskonfiguration ein. Die Startskripte führen absichtlich keine Installation durch.
+Für Linux und macOS richtet `setup.sh` eine Python-Virtualenv, Backend-Abhängigkeiten, beide `pnpm`-Projekte sowie eine lokale, ignorierte Konfiguration ein. Startskripte installieren absichtlich nichts.
 
 ```bash
 git clone https://github.com/BVBGurke/PW-Tool.git
 cd PW-Tool
 ./setup.sh
-./start.sh
+./start.sh stack
 ```
 
-Danach läuft die API standardmäßig unter `http://127.0.0.1:8000` und die React-App unter `http://127.0.0.1:5173`. Die FastAPI-Dokumentation ist lokal unter `http://127.0.0.1:8000/api/docs` erreichbar.
+Danach läuft die API standardmäßig unter `http://127.0.0.1:8000`; die React-App startet mit Vite auf Port `5173`. Die API verwendet den Präfix `/api/v1`; die lokale FastAPI-Dokumentation ist unter `http://127.0.0.1:8000/api/docs` erreichbar.
 
 | Plattform | Einrichten | Starten |
 |---|---|---|
@@ -30,42 +44,32 @@ Danach läuft die API standardmäßig unter `http://127.0.0.1:8000` und die Reac
 | Windows | `setup.bat` | `start.bat [backend|frontend|stack]` |
 | Android/Termux | `./setup-termux.sh` | `./start-termux.sh [backend|frontend]` |
 
-`stack` startet das Backend im Hintergrund und hält das Frontend im Vordergrund. Android/Termux verwendet absichtlich den CPU-/ARM64-Pfad; CUDA ist nie Teil der Passwort- oder Hash-Erzeugung.
+`stack` startet das lokale Backend im Hintergrund und hält den Frontend-Dev-Server im Vordergrund. Termux bleibt absichtlich im CPU-/ARM64-Pfad. Für eine Produktvorschau sollten die erzeugten Passwörter anschließend in einem geeigneten Passwortmanager abgelegt werden.
 
-## Konten, Datenbank und Verlauf
+## TLS-geschützter LAN-Betrieb
 
-Die erste Person kann über die React-App ein lokales Konto anlegen. Kontokennwörter werden mit einer gesalzenen `scrypt`-KDF gespeichert. Die Anmeldung erstellt ein zufälliges, serverseitig gespeichertes Sitzungstoken, das der Browser nur über ein HTTP-only-Cookie erhält.
+LAN-Modus ist kein Direkt-Bindungsmodus. Ein Betreiber stellt zuerst einen TLS-Reverse-Proxy bereit, der Browserzugriffe über eine konkrete HTTPS-Origin akzeptiert und das Backend **lokal** auf `127.0.0.1:8000` erreicht. Frontend und API sollten unter derselben HTTPS-Origin liegen; in diesem Fall setzt ein Produktionsfrontend `VITE_API_BASE_URL=/api/v1`.
 
-Der Verlauf ist bewusst deaktiviert, bis die Checkbox beim Erzeugen aktiviert wird. Bei Aktivierung werden Passwortwerte mit einem separaten lokalen AEAD-Schlüssel verschlüsselt in SQLite abgelegt und erst nach erneuter authentisierter Abfrage entschlüsselt. Die lokale Konfiguration `.pwtool.local.json` enthält diese Schlüssel und wird nicht eingecheckt.
-
-> Lösche einen Verlaufseintrag, sobald er nicht mehr benötigt wird. Ein verschlüsselter lokaler Verlauf ist kein Ersatz für ein professionell betriebenes Passwortmanagement.
-
-## LAN-Betrieb
-
-Ein LAN-Server benötigt eine bewusste Änderung der lokal erzeugten Konfiguration. Trage die konkrete React-Origin ein und setze `lan_enabled` auf `true`; Wildcard-CORS ist absichtlich ungültig.
+Die lokale, ignorierte Konfiguration muss mindestens die konkrete HTTPS-Origin und sichere Cookie-Parameter enthalten:
 
 ```json
 {
-  "allowed_origins": "http://192.168.1.50:5173",
-  "lan_enabled": true
+  "allowed_origins": "https://pwtool.lan.example",
+  "lan_enabled": true,
+  "cookie_secure": true,
+  "cookie_samesite": "strict"
 }
 ```
 
-Danach startet `PWTOOL_BIND=lan ./start.sh backend` den Server auf `0.0.0.0`. Verwende diesen Modus nur in einem vertrauenswürdigen Netz. Für sensible LAN-Umgebungen muss der Betreiber zusätzlich einen TLS-terminierenden Reverse Proxy bereitstellen; ein öffentlicher Internetbetrieb, E-Mail-Reset und Multi-Tenant-Hosting sind ausgeschlossen.
-
-## Passwort- und Hash-Grenzen
-
-Die sichtbare Policy zieht direkt aus dem OS-CSPRNG, erzwingt Zeichenklassen, verwendet Rejection Sampling gegen Modulo-Bias und mischt Positionen per CSPRNG-basiertem Fisher-Yates-Shuffle. Die Auswahl **Vollständig** garantiert Klein-/Großbuchstaben, Ziffern und Sonderzeichen; **Kompatibel** garantiert Klein-/Großbuchstaben und Ziffern.
-
-Die lokale Hash-Demo erzeugt ausschließlich einen frischen, nicht angezeigten Demo-Wert. Sie führt eine begrenzte scrypt-Ableitung und eine einmalige Selbstverifikation aus und zeigt nur Metadaten. Das Projekt enthält keine allgemeine Crack-Funktion, verarbeitet keine Fremdhashes und verwendet keine Kandidatenlisten oder Rateversuche.
+Danach prüft `PWTOOL_BIND=lan ./start.sh backend` die Konfiguration und startet das Backend weiter nur lokal für den Reverse-Proxy. HTTP-Origin(s), Wildcard-CORS, unsichere Cookies und öffentlicher Internetbetrieb werden nicht als gültiger LAN-Modus akzeptiert.
 
 ## Entwicklung und Qualität
 
 ```bash
-# Backendtests
+# Backend- und Sicherheitsregressionen
 PYTHONPATH=backend python -m unittest discover -v backend/tests
 
-# React-Generator bauen
+# React-Anwendung mit React-Bits/GSAP bauen
 pnpm --dir frontend install
 pnpm --dir frontend build
 
@@ -74,8 +78,4 @@ pnpm --dir website install
 GITHUB_ACTIONS=true pnpm --dir website build
 ```
 
-GitHub Actions prüft Backend, Frontend und Website. Der Pages-Workflow baut `website/` und kann erst nach Aktivierung von GitHub Pages in den Repository-Einstellungen tatsächlich veröffentlichen.
-
-## Zusätzliche Architekturinformationen
-
-Der bestätigte Sicherheits- und Produktbrief steht in [`ARCHITECTURE.md`](ARCHITECTURE.md). Die genaue Ordner- und Migrationsstrategie steht in [`MIGRATION.md`](MIGRATION.md). Beide Dokumente grenzen den lokalen/LAN-Betrieb ausdrücklich gegen ein öffentliches Passwortservice-Angebot ab.
+GitHub Actions prüft Backend, Frontend und Website getrennt. Der Pages-Workflow baut ausschließlich `website/`; er enthält keine lokalen API- oder Konfigurationsgeheimnisse. Detaillierte Entscheidungen stehen in [`TARGET_ARCHITECTURE.md`](TARGET_ARCHITECTURE.md), die Migrationsparität in [`MODERNIZATION_BASELINE.md`](MODERNIZATION_BASELINE.md) und die React-Bits-Quellen in [`REACT_BITS_RESEARCH.md`](REACT_BITS_RESEARCH.md).

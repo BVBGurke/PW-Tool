@@ -1,4 +1,4 @@
-"""Explizite, lokale Konfiguration für den PW-Tool-LAN-Betrieb."""
+"""Strikt validierte lokale und LAN-Konfiguration für PW-Tool."""
 
 from __future__ import annotations
 
@@ -7,9 +7,12 @@ from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
+from urllib.parse import urlparse
 
 
 DEFAULT_ORIGINS = ("http://127.0.0.1:5173", "http://localhost:5173")
+_TRUE_VALUES = {"1", "true", "yes", "on"}
+_FALSE_VALUES = {"0", "false", "no", "off"}
 
 
 def _decode_key(value: str, label: str) -> bytes:
@@ -22,6 +25,22 @@ def _decode_key(value: str, label: str) -> bytes:
     return decoded
 
 
+def _as_bool(value: object, label: str) -> bool:
+    if isinstance(value, bool):
+        return value
+    normalized = str(value).strip().lower()
+    if normalized in _TRUE_VALUES:
+        return True
+    if normalized in _FALSE_VALUES:
+        return False
+    raise ValueError(f"{label} must be a boolean")
+
+
+def _is_local_origin(origin: str) -> bool:
+    host = urlparse(origin).hostname
+    return host in {"127.0.0.1", "localhost", "::1"}
+
+
 @dataclass(frozen=True)
 class Settings:
     database_path: Path
@@ -29,6 +48,8 @@ class Settings:
     history_key: bytes
     allowed_origins: tuple[str, ...]
     lan_enabled: bool
+    cookie_secure: bool
+    cookie_samesite: str
 
     @classmethod
     def from_mapping(cls, values: dict[str, object]) -> "Settings":
@@ -37,12 +58,15 @@ class Settings:
             for origin in str(values.get("allowed_origins", ",".join(DEFAULT_ORIGINS))).split(",")
             if origin.strip()
         )
+        lan_enabled = _as_bool(values.get("lan_enabled", False), "lan_enabled")
         settings = cls(
             database_path=Path(str(values.get("database_path", "data/pwtool.sqlite3"))),
             session_key=_decode_key(str(values["session_key"]), "session_key"),
             history_key=_decode_key(str(values["history_key"]), "history_key"),
             allowed_origins=origins,
-            lan_enabled=bool(values.get("lan_enabled", False)),
+            lan_enabled=lan_enabled,
+            cookie_secure=_as_bool(values.get("cookie_secure", lan_enabled), "cookie_secure"),
+            cookie_samesite=str(values.get("cookie_samesite", "strict" if lan_enabled else "lax")).lower(),
         )
         settings.validate()
         return settings
@@ -65,5 +89,18 @@ class Settings:
             raise ValueError("At least one explicit allowed origin is required")
         if "*" in self.allowed_origins:
             raise ValueError("Wildcard CORS origins are forbidden")
-        if self.lan_enabled and all("127.0.0.1" in origin or "localhost" in origin for origin in self.allowed_origins):
-            raise ValueError("LAN mode requires at least one explicit LAN origin")
+        if self.cookie_samesite not in {"lax", "strict"}:
+            raise ValueError("cookie_samesite must be lax or strict")
+        for origin in self.allowed_origins:
+            parsed = urlparse(origin)
+            if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+                raise ValueError("Allowed origins must be absolute http(s) origins")
+            if parsed.path not in {"", "/"} or parsed.params or parsed.query or parsed.fragment:
+                raise ValueError("Allowed origins must not contain a path, query, or fragment")
+        if self.lan_enabled:
+            if all(_is_local_origin(origin) for origin in self.allowed_origins):
+                raise ValueError("LAN mode requires at least one explicit LAN origin")
+            if not self.cookie_secure:
+                raise ValueError("LAN mode requires cookie_secure=true behind TLS")
+            if any(urlparse(origin).scheme != "https" for origin in self.allowed_origins):
+                raise ValueError("LAN mode requires explicit HTTPS origins")

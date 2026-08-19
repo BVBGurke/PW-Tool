@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 
-from pwtool.config import Settings
+from app.core.config import Settings
 
 
 def main() -> None:
@@ -15,6 +15,8 @@ def main() -> None:
     settings = Settings.from_file(arguments.config)
     if arguments.bind == "lan" and not settings.lan_enabled:
         raise SystemExit("LAN bind requested but lan_enabled is false in local configuration")
+    if arguments.bind == "lan" and not settings.cookie_secure:
+        raise SystemExit("LAN bind requires cookie_secure=true and HTTPS origins behind TLS")
 
 
 if __name__ == "__main__":

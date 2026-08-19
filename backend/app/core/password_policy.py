@@ -6,6 +6,7 @@ import math
 import os
 import string
 
+
 MIN_LENGTH = 16
 MAX_LENGTH = 256
 MAX_COUNT = 10_000

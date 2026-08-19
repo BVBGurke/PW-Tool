@@ -22,7 +22,7 @@ def main() -> None:
     if path.exists() and not arguments.force:
         print(f"Configuration already exists: {path}")
         return
-    path.write_text(json.dumps({"database_path": "data/pwtool.sqlite3", "session_key": key(), "history_key": key(), "allowed_origins": "http://127.0.0.1:5173,http://localhost:5173", "lan_enabled": False}, indent=2) + "\n", encoding="utf-8")
+    path.write_text(json.dumps({"database_path": "data/pwtool.sqlite3", "session_key": key(), "history_key": key(), "allowed_origins": "http://127.0.0.1:5173,http://localhost:5173", "lan_enabled": False, "cookie_secure": False, "cookie_samesite": "lax"}, indent=2) + "\n", encoding="utf-8")
     path.chmod(0o600)
     print(f"Created local configuration: {path}")
 

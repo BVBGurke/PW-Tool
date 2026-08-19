@@ -6,9 +6,12 @@ if "%COMPONENT%"=="" set COMPONENT=stack
 if not exist "%ROOT%.venv\Scripts\python.exe" (echo Bitte zuerst setup.bat ausfuehren.& exit /b 1)
 if not exist "%ROOT%.pwtool.local.json" (echo Lokale Konfiguration fehlt. Bitte setup.bat ausfuehren.& exit /b 1)
 set HOST=127.0.0.1
-if /I "%PWTOOL_BIND%"=="lan" set HOST=0.0.0.0
 set BIND_MODE=local
 if /I "%PWTOOL_BIND%"=="lan" set BIND_MODE=lan
+if /I "%PWTOOL_BIND%"=="lan" if /I not "%COMPONENT%"=="backend" (
+  echo LAN-Modus startet nur das lokale Backend fuer einen TLS-Reverse-Proxy. Nutze: set PWTOOL_BIND=lan ^& start.bat backend
+  exit /b 2
+)
 set PYTHONPATH=%ROOT%backend
 "%ROOT%.venv\Scripts\python.exe" "%ROOT%scripts\validate_runtime.py" --config "%ROOT%.pwtool.local.json" --bind %BIND_MODE%
 if errorlevel 1 exit /b 1

@@ -1,14 +1,11 @@
-"""Kontokennwort-KDF, serverseitige Sitzungen und AEAD-Verlaufverschlüsselung."""
+"""scrypt-basierte Kontokennwortableitung und konstanter Vergleich."""
 
 from __future__ import annotations
 
 import base64
-from datetime import datetime, timedelta, timezone
 import hashlib
 import hmac
 import secrets
-
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 
 ACCOUNT_N = 2**14
@@ -17,7 +14,6 @@ ACCOUNT_P = 1
 ACCOUNT_DKLEN = 32
 ACCOUNT_SALT_BYTES = 16
 ACCOUNT_MAXMEM = 64 * 1024 * 1024
-SESSION_LIFETIME = timedelta(hours=12)
 
 
 def _b64(value: bytes) -> str:
@@ -56,25 +52,3 @@ def verify_account_password(password: str, stored: str) -> bool:
         return hmac.compare_digest(derived, _unb64(expected_raw))
     except (ValueError, UnicodeError, TypeError):
         return False
-
-
-def new_session_token() -> str:
-    return secrets.token_urlsafe(32)
-
-
-def session_digest(token: str, session_key: bytes) -> str:
-    return hmac.new(session_key, token.encode("utf-8"), hashlib.sha256).hexdigest()
-
-
-def expiry_timestamp() -> str:
-    return (datetime.now(timezone.utc) + SESSION_LIFETIME).isoformat()
-
-
-def encrypt_history_value(value: str, history_key: bytes, account_id: int) -> tuple[bytes, bytes]:
-    nonce = secrets.token_bytes(12)
-    ciphertext = AESGCM(history_key).encrypt(nonce, value.encode("utf-8"), str(account_id).encode("ascii"))
-    return nonce, ciphertext
-
-
-def decrypt_history_value(nonce: bytes, ciphertext: bytes, history_key: bytes, account_id: int) -> str:
-    return AESGCM(history_key).decrypt(nonce, ciphertext, str(account_id).encode("ascii")).decode("utf-8")

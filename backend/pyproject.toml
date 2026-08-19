@@ -13,5 +13,6 @@ dependencies = [
     "cryptography>=45,<51",
 ]
 
-[tool.setuptools]
-packages = ["pwtool", "pwtool.core"]
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]

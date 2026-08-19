@@ -4,7 +4,10 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 COMPONENT=${1:-stack}
 HOST=127.0.0.1
-if [ "${PWTOOL_BIND:-local}" = "lan" ]; then HOST=0.0.0.0; fi
+if [ "${PWTOOL_BIND:-local}" = "lan" ] && [ "$COMPONENT" != "backend" ]; then
+  printf '%s\n' 'LAN-Modus startet nur das lokale Backend für einen TLS-Reverse-Proxy. Nutze: PWTOOL_BIND=lan ./start.sh backend' >&2
+  exit 2
+fi
 if [ ! -x "$ROOT/.venv/bin/python" ]; then printf '%s\n' 'Bitte zuerst ./setup.sh ausführen.' >&2; exit 1; fi
 if [ ! -f "$ROOT/.pwtool.local.json" ]; then printf '%s\n' 'Lokale Konfiguration fehlt. Bitte ./setup.sh ausführen.' >&2; exit 1; fi
 PWTOOL_CONFIG="$ROOT/.pwtool.local.json" PYTHONPATH="$ROOT/backend" "$ROOT/.venv/bin/python" "$ROOT/scripts/validate_runtime.py" --config "$ROOT/.pwtool.local.json" --bind "${PWTOOL_BIND:-local}"

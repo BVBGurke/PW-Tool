@@ -1,56 +1,53 @@
-# Bestätigter Arbeitsbrief: PW-Tool als LAN-Full-Stack-Anwendung
+# PW-Tool-Architektur
 
-## Ziel und Umfang
+## Zweck und Grenze
 
-PW-Tool wird von einer reinen lokalen Textual-CLI zu einem strukturierten Repository mit einem Python-Backend, einem praktischen React-Frontend und einer getrennten React-Projektwebsite. Die bisherige Textual-CLI entfällt als eigenständige Produktoberfläche. Die Passworterzeugung bleibt lokal zum betriebenen Server; die React-App kommuniziert per REST mit dem Python-Backend.
+PW-Tool ist eine lokale beziehungsweise TLS-abgesicherte LAN-Anwendung für Passworterzeugung über den OS-CSPRNG-CPU-Pfad. Das System ist kein öffentlicher Passwortdienst, keine Cloud-Synchronisierung, keine native APK und kein Crackwerkzeug. Die unabhängige `website/` beschreibt das Projekt, ruft jedoch keine lokale API auf.
 
-| Bereich | Festlegung |
-|---|---|
-| Backend | Python mit FastAPI, strukturierte REST-API, eigene Datenbank und Nutzerkonten. |
-| Frontend | Vite, React und TypeScript mit fokussierter Generator-Ansicht im Technical-Field-Manual-Stil. |
-| Website | Eigenes React-Projekt in `website/`; GitHub Actions bereitet GitHub Pages nach Aktivierung durch den Repository-Owner vor. |
-| Repository | `backend/`, `frontend/`, `website/` sowie plattformübergreifende Starter im Hauptordner. |
-| Paketmanager | `pnpm` für React-Projekte; Python-Abhängigkeiten getrennt im Backend. |
-| Sprache | Deutsch für UI, Website und Dokumentation; technische API-Felder bleiben Englisch. |
-
-## LAN-Betriebsmodell
-
-Die Anwendung wird **nicht** als öffentlicher Internetdienst entwickelt. Sie darf lokal laufen und kann nach bewusster Konfiguration in einem vertrauenswürdigen LAN erreichbar sein. Für LAN-Betrieb sind Nutzerkonten und eine Datenbank vorgesehen.
-
-| Sicherheitsgrenze | Verbindliche Umsetzung |
-|---|---|
-| Standardbindung | `127.0.0.1`; LAN-Bindung ist ein expliziter Startmodus. |
-| LAN-Bindung | `0.0.0.0` nur mit konfigurierten erlaubten Origins und expliziter LAN-Konfiguration. |
-| Konten | Lokale Registrierung/Anmeldung; Passwörter werden gesalzen und mit einer langsamen KDF gespeichert. |
-| Sitzungen | Nicht vorhersehbare, serverseitig gespeicherte Sitzungstokens; Cookie- und Ablaufregeln werden dokumentiert. |
-| Datenbank | Lokale SQLite-Datenbank im ersten Release; Datenmodell bleibt auf eine spätere PostgreSQL-Migration vorbereitbar. |
-| Verlauf | Opt-in; Passwortwerte werden nur verschlüsselt gespeichert. Die Verschlüsselung verwendet einen separaten lokalen Schlüssel, nicht das Kontopasswort allein. |
-| CORS | Kein Wildcard-CORS; localhost und explizit konfigurierte LAN-Origin(s) sind die einzigen erlaubten Ziele. |
-| Rate Limits | Login- und erzeugungsbezogene Rate Limits sowie fehlertolerante, nicht sensitive Fehlermeldungen. |
-| Öffentlicher Betrieb | Nicht Teil dieses Auftrags. TLS, Internet-Exposure, Mail-Reset und Multi-Tenant-Betrieb bleiben ausgeschlossen. |
-
-> Die bestehende Hash-Demo bleibt eine lokale, selbstbezogene Schulungs- und Prüfungsfunktion. Sie akzeptiert keine fremden Hashes, Wortlisten oder Kandidaten und führt keine Rateversuche aus.
-
-## Zielstruktur
+## Implementierter Zielbaum
 
 ```text
-backend/                 FastAPI-Anwendung, Datenmodell, API, Tests und Python-Abhängigkeiten
-frontend/                Vite/React/TypeScript-App für lokale und LAN-gebundene Nutzung
-website/                 getrennte Vite/React-Projektwebsite für GitHub Pages
-scripts/                 Hilfsskripte für Entwicklung, Migration und Qualitätsprüfung
-start.sh                 Linux/macOS: Startet die gewünschte Komponente ohne Installation
-start.bat                Windows: Startet die gewünschte Komponente ohne Installation
-start-termux.sh          Android/Termux: Startet die kompatiblen lokalen Komponenten
-setup.sh / setup.bat / setup-termux.sh
-                          Bewusste Einrichtung der jeweiligen Laufzeitabhängigkeiten
+backend/
+  app/
+    api/            versionierte FastAPI-Routen und Abhängigkeiten
+    core/           Settings, Fehlerübersetzung, Passwortpolicy
+    middleware/     Request-ID, Security Header, Origin- und Rate-Limit-Grenzen
+    models/         interne Datenmodelle
+    repositories/   parameterisierte SQLite-Zugriffe
+    schemas/        Pydantic Request-/Response-Verträge
+    security/       scrypt, Sessions, AES-GCM
+    services/       Auth, Generator, Verlauf, Hash-Demo, Capability-Status
+    main.py         App-Fabrik
+  tests/
+frontend/
+  src/api/          zentraler Cookie-API-Client pro Fachbereich
+  src/features/     Auth, Generator, Verlauf, Hash-Demo und Runtime-Status
+  src/components/react-bits/
+website/
+scripts/
 ```
 
-## Funktionsumfang des ersten Full-Stack-Release
+Eine Nutzungsanforderung folgt der Grenze **React-Feature → Client → Route → Service → Core/Security → Repository → SQLite**. Routen übersetzen ausschließlich HTTP und Abhängigkeiten. Services tragen die Fachlogik. Repositories führen den lokalen Datenzugriff mit Platzhalterparametern aus.
 
-Die React-App umfasst Länge, Anzahl, Zeichenauswahl, Erzeugung, Kopieren, lokalen Sicherheitscheck, Ergebnislöschung, die sichere Hash-Demo, Registrierung, Anmeldung und eine opt-in-verschlüsselte Verlaufsliste. GPU/CUDA bleibt eine Status- und Benchmark-Metadatenfunktion; Passwort- und Hash-Erzeugung bleiben im auditierbaren CPU-/ARM64-Pfad.
+## API und Sicherheitsmodell
 
-## Abnahme und Ausschlüsse
+Die öffentliche lokale API ist unter `/api/v1` versioniert. Authentisierung, Passworterzeugung, Verlauf, Hash-Demo und Runtime-Capabilities sind getrennte Routen. Fehler werden als `application/problem+json` mit zufälliger Request-ID zurückgegeben; Interne Fehlermeldungen, SQL-Ausnahmen, Schlüssel, Passwortwerte und Sessiontokens gehören nicht in Antworten oder Logs.
 
-Die Arbeit gilt als abgenommen, wenn die Starter funktionieren, Benutzerkonten und Datenbank lokal/LAN-konfiguriert arbeiten, CLI und React-App die vereinbarten sicheren Werte erzeugen, CORS und LAN-Grenzen geprüft sind, Tests und Builds erfolgreich durchlaufen und der Stand auf GitHub liegt.
+| Schutzbereich | Umsetzung |
+|---|---|
+| Konto | scrypt mit Salt und konstanter Vergleich; Dummy-Ableitung bei unbekanntem Benutzernamen. |
+| Sitzung | Zufälliges opaque Token im HTTP-only-Cookie; nur HMAC-Digest wird serverseitig gespeichert; Ablauf und Logout-Widerruf. |
+| Verlauf | Opt-in; AES-GCM mit Kontokennung als authentifizierter Zusatzdatenbindung; nur kontogebundene Auswahl/Löschung. |
+| Browsergrenze | Kein Wildcard-CORS; zustandsändernde Requests prüfen Origin zusätzlich; API-Daten sind `no-store`. |
+| HTTP-Härtung | Request-ID, `nosniff`, Frame- und Referrer-Schutz, Permissions Policy. |
+| Passwortkern | OS-CSPRNG und CPU/ARM64; CUDA ist keine Entropie-, KDF- oder Passwortkomponente. |
 
-Ausgeschlossen sind ein öffentlicher Internetdienst, eine allgemeine Crack-Funktion, die Verarbeitung fremder Hashes, unbeaufsichtigte Installationen in `start.*`, Cloud-Synchronisierung und eine mobile APK.
+## Laufzeitmodell
+
+Der lokale Entwicklungsmodus nutzt ausdrücklich konfigurierte `localhost`-/`127.0.0.1`-Origins und ein nicht sicheres Cookie nur in dieser isolierten HTTP-Entwicklungsform. Der Frontend-Client leitet den lokalen API-Host aus dem aufgerufenen Browserhost ab, damit SameSite-Cookies nicht zwischen `localhost` und `127.0.0.1` verloren gehen.
+
+LAN-Konfiguration muss konkrete HTTPS-Origin(s), `lan_enabled=true`, `cookie_secure=true` und einen TLS-Reverse-Proxy enthalten. Der LAN-Starter bindet FastAPI weiter an `127.0.0.1`; der Proxy terminiert TLS und liefert idealerweise die App sowie `/api/v1` unter derselben Origin aus. HTTP-LAN, Wildcards und öffentliche Internetfreigabe sind nicht zulässig.
+
+## Frontend und React Bits
+
+Die App nutzt React und TypeScript mit zentralem API-Client und klaren Loading-, Error-, Empty- und Success-Zuständen. Aus React Bits wurden quellbasiert angepasste `AnimatedContent`, `FadeContent` und `SpotlightCard` eingebunden. GSAP-Bewegungen laufen nur bei nicht reduzierter Bewegung, bleiben kurz und enthalten weder Scrollzwang noch Animationen für Fehlermeldungen. Formularfelder und Statusmeldungen bleiben semantisch und tastaturbedienbar.
