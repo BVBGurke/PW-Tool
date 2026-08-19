@@ -12,7 +12,7 @@ from diagnostics import SafeDiagnosticLogger
 from dispatcher import BackendDispatcher, BackendPreference
 from password_engine import CharacterSet
 from profiles import ProfileOption, SessionProfiles
-from tui import RichUI
+from textual_ui import PwToolTextualApp
 from version import __version__
 
 
@@ -21,8 +21,6 @@ class PasswordGeneratorApp:
 
     def __init__(self, *, log_enabled: bool = False, log_directory: Path | None = None) -> None:
         self.cuda_engine = get_cuda_engine()
-        cuda_available, device_name, _ = self.cuda_engine.get_status()
-        self.ui = RichUI(cuda_available, device_name)
         self.dispatcher = BackendDispatcher()
         self.logger = SafeDiagnosticLogger(enabled=log_enabled, directory=log_directory)
 
@@ -72,55 +70,15 @@ class PasswordGeneratorApp:
         return result, decision
 
     def run_interactive(self) -> None:
-        """Führt die Rich-TUI aus; Enter im Startprofil-Menü startet die Sitzung."""
-        self.ui.show_header()
-        profiles = self.ui.get_session_profiles()
-        config = self.ui.get_generation_config()
-
-        while True:
-            try:
-                def compute():
-                    return self.generate_with_mode(
-                        config.password_count,
-                        config.password_length,
-                        config.charset,
-                        config.overkill,
-                        config.system_mix_enabled,
-                        profiles,
-                    )
-
-                result, decision = self.ui.run_computation_threaded(
-                    compute,
-                    description="Berechne...",
-                )
-                self.ui.show_backend_decision(
-                    result.backend.value,
-                    decision.reason,
-                    self.logger.enabled,
-                )
-                if result.passwords:
-                    self.ui.display_passwords(
-                        result.passwords,
-                        result.backend.value.upper(),
-                        result.system_mix.status,
-                        result.system_mix.source_count,
-                    )
-                if profiles.is_enabled(ProfileOption.BENCHMARK_METRICS):
-                    self._show_phase_metrics(result.phase_seconds)
-
-                if not self.ui.prompt_continue():
-                    self.ui.show_goodbye()
-                    break
-            except KeyboardInterrupt:
-                self.ui.show_goodbye()
-                break
-            except Exception as error:
-                self.ui.show_error("Unexpected Error", str(error))
-
-    def _show_phase_metrics(self, timings: dict) -> None:
-        self.ui.console.print("[bold]Messphasen:[/bold]")
-        for phase, seconds in sorted(timings.items()):
-            self.ui.console.print(f"  {phase}: {seconds * 1000:.3f} ms")
+        """Startet die responsive Textual-Oberfläche mit der sicheren Kernlogik."""
+        cuda_available, device_name, _ = self.cuda_engine.get_status()
+        application = PwToolTextualApp(
+            self.generate_with_mode,
+            cuda_available=cuda_available,
+            device_name=device_name,
+            log_enabled=self.logger.enabled,
+        )
+        application.run()
 
     def run(self) -> int:
         try:

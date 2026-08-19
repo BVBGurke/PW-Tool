@@ -6,7 +6,7 @@ PW-Tool ist eine **reine Python-CLI** für lokale Passworterzeugung. Das Projekt
 
 ## Installation und Start
 
-PW-Tool benötigt Python 3.10 oder neuer. Die Rich-TUI ist die einzige reguläre Abhängigkeit.
+PW-Tool benötigt Python 3.10 oder neuer. Die reguläre Oberfläche ist eine lokale **Textual-TUI**; `rich` bleibt ausschließlich für den vorhandenen Legacy-/Fallback-Code installiert. Die Abhängigkeiten werden aus `requirements.txt` beziehungsweise den Paketmetadaten installiert.
 
 ```bash
 python -m pip install .
@@ -26,20 +26,31 @@ python -m pip install -r requirements-benchmark.txt
 
 `pyperf` ist nur für externe, statistische Benchmarks vorgesehen. CuPy und NVML-Werkzeuge bleiben bewusst optional und werden nicht zur normalen Passwortausgabe importiert.
 
-## Beta-Optionen
+## Sitzungskonfiguration und Bedienung
 
-Vor der ersten Passwortabfrage zeigt die interaktive TUI ausschließlich Optionen, die in der aktuellen Beta tatsächlich wirken. Gib die gewünschten Nummern **einmalig** ein, getrennt durch Leerzeichen oder Komma. **Enter ohne Zahl** nutzt die sichere Standardoption 1. Die Auswahl und alle Generierungseinstellungen werden für die gesamte Sitzung beibehalten; eine Wiederholung erzeugt neue Passwörter mit derselben Konfiguration, ohne erneut nach Länge, Zeichensatz oder Batchgröße zu fragen.
+Beim Start zeigt PW-Tool ein Textual-Formular. Passwortlänge, Anzahl, Zeichensatz, optionale Systemmischung, zusätzliche KDF-Arbeit sowie die wirksamen Beta-Optionen werden dort **einmal pro Sitzung** festgelegt. Jede weitere Erzeugung verwendet diese Auswahl unverändert und erzeugt ausschließlich neue lokale Werte; die Konfiguration wird weder gespeichert noch erneut abgefragt.
 
-| Nr. | Option | Standard | Wirkung |
-|---|---|---:|---|
-| 1 | CUDA als Kandidat | Aktiv | Prüft CUDA für große Batches; der sichere CPU-/ARM64-Fallback bleibt immer verfügbar. |
-| 2 | Ergebnis-Metriken | Inaktiv | Zeigt zusätzliche, nicht sensitive Phasenzeiten in der Ergebnisansicht. |
+| Feld oder Option | Standard | Wirkung |
+|---|---:|---|
+| Passwortlänge | 64 | Erlaubt Werte von 8 bis 256 Zeichen. |
+| Anzahl | 1 | Erlaubt 1 bis 10.000 Passwörter pro Lauf. |
+| Zeichensatz | `alphanumeric` | Wählt den Zeichenvorrat der Passwortableitung. |
+| CUDA als Kandidat | Aktiv | Prüft CUDA für große Batches; der sichere CPU-/ARM64-Fallback bleibt verfügbar. |
+| Ergebnis-Metriken | Inaktiv | Zeigt nur nicht sensitive Phasenzeiten in der Ergebnisansicht. |
+| Systemmischung | Inaktiv | Aktiviert die dokumentierte, optionale lokale Zusatzmischung. |
+| Zusätzliche KDF-Arbeit | Inaktiv | Erhöht die lokale Rechenarbeit bewusst und kann die Laufzeit verlängern. |
 
 Nicht sichtbare Zukunftsthemen wie Hybrid-Pipeline, Energieprofil oder CUDA-Warm-up sind **nicht** als Beta-Funktion implementiert und werden daher nicht auswählbar dargestellt.
 
 ### Schmale und mobile Terminals
 
-Bei einer Terminalbreite unter 72 Zeichen schaltet PW-Tool auf eine **textorientierte Kompaktansicht**. Status, Backendentscheidung und Ergebnisse werden dann zeilenweise ausgegeben. Lange Passwörter werden gefaltet statt mit einer Ellipse abgeschnitten, sodass alle Zeichen sichtbar bleiben. In breiten Terminals bleibt die tabellarische Rich-Ausgabe aktiv.
+Bei einer Terminalbreite unter 72 Zeichen schaltet die Textual-Oberfläche auf eine **Kompaktansicht** mit vertikal angeordneten Bereichen. Status, Backendentscheidung und Ergebnisse bleiben verfügbar. Lange Passwörter werden gefaltet statt durch eine Ellipse abgeschnitten, sodass alle Zeichen sichtbar bleiben. Breite Terminals verwenden ein mehrspaltiges Desktop-Layout.
+
+| Tastenkürzel | Funktion |
+|---|---|
+| `Strg+G` | Erzeugt Passwörter mit der aktuellen Sitzungskonfiguration. |
+| `Strg+C` | Kopiert die zuletzt erzeugten Passwörter, sofern die Zwischenablage verfügbar ist. |
+| `Strg+Q` | Beendet die Anwendung. |
 
 ## CUDA: aktueller Sicherheits- und Performance-Status
 
@@ -117,6 +128,8 @@ python verify_entropy.py
 
 ```text
 pw.py                    Interaktiver CLI-Einstieg, -log-Option und --version
+textual_ui.py            Responsive Textual-TUI mit Worker-basierter Erzeugung
+tui.py                   Veraltete Rich-Oberfläche als Legacy-/Fallback-Code
 version.py               Zentrale private-Beta-Version
 pyproject.toml           Deklarative Paket- und Konsolenmetadaten
 profiles.py              Zwei wirksame, nicht persistierte Beta-Optionen
@@ -129,7 +142,7 @@ cpu_engine.py            OS-CSPRNG, Systemmix und CPU-PBKDF2
 cuda_engine.py           CUDA-Detection und getrennte Diagnosephasen
 system_mix.py            Lokale feste Zusatzmischung
 audit/                   Architektur-Baseline und GitHub-Gem-Bewertung
-tests/                   Dispatcher-, Logger-, Backend- und Benchmarktests
+tests/                   Dispatcher-, Logger-, Backend-, Benchmark- und Textual-Tests
 ```
 
 ## Verifizierungsgrenzen
@@ -147,3 +160,5 @@ Die im Repository vorhandene Linux-x86-64-CPU wurde getestet. Eine RTX 4070 SUPE
 [4] [Python documentation: `secrets`](https://docs.python.org/3/library/secrets.html)
 
 [5] [Python documentation: `hashlib`](https://docs.python.org/3/library/hashlib.html)
+
+[6] [Textual – Python framework for terminal user interfaces](https://textual.textualize.io/)

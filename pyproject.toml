@@ -10,6 +10,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "rich>=13.7,<15",
+    "textual>=8.2,<9",
 ]
 
 [project.scripts]
@@ -26,6 +27,7 @@ py-modules = [
     "pw",
     "system_mix",
     "tui",
+    "textual_ui",
     "version",
 ]
 packages = ["backends", "benchmark"]
