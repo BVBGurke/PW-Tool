@@ -9,7 +9,6 @@ description = "Lokaler Python-CLI-Passwortgenerator für eine private technische
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "rich>=13.7,<15",
     "textual>=8.2,<9",
 ]
 
@@ -26,7 +25,6 @@ py-modules = [
     "profiles",
     "pw",
     "system_mix",
-    "tui",
     "textual_ui",
     "version",
 ]

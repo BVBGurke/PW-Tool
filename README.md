@@ -6,7 +6,7 @@ PW-Tool ist eine **reine Python-CLI** für lokale Passworterzeugung. Das Projekt
 
 ## Installation und Start
 
-PW-Tool benötigt Python 3.10 oder neuer. Die reguläre Oberfläche ist eine lokale **Textual-TUI**; `rich` bleibt ausschließlich für den vorhandenen Legacy-/Fallback-Code installiert. Die Abhängigkeiten werden aus `requirements.txt` beziehungsweise den Paketmetadaten installiert.
+PW-Tool benötigt Python 3.10 oder neuer. Die Anwendung verwendet ausschließlich eine lokale **Textual-TUI**. Die Abhängigkeit wird aus `requirements.txt` beziehungsweise den Paketmetadaten installiert.
 
 ```bash
 python -m pip install .
@@ -129,7 +129,6 @@ python verify_entropy.py
 ```text
 pw.py                    Interaktiver CLI-Einstieg, -log-Option und --version
 textual_ui.py            Responsive Textual-TUI mit Worker-basierter Erzeugung
-tui.py                   Veraltete Rich-Oberfläche als Legacy-/Fallback-Code
 version.py               Zentrale private-Beta-Version
 pyproject.toml           Deklarative Paket- und Konsolenmetadaten
 profiles.py              Zwei wirksame, nicht persistierte Beta-Optionen
