@@ -4,6 +4,11 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 PYTHON=${PYTHON:-python3}
 
+if ! command -v pnpm >/dev/null 2>&1; then
+  printf '%s\n' 'pnpm fehlt. In Termux zuerst ./setup-termux.sh verwenden; auf anderen Systemen pnpm 11 installieren.' >&2
+  exit 1
+fi
+
 "$PYTHON" -m venv "$ROOT/.venv"
 "$ROOT/.venv/bin/python" -m pip install --upgrade pip
 "$ROOT/.venv/bin/python" -m pip install -r "$ROOT/backend/requirements.txt"

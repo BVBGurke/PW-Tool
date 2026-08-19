@@ -46,6 +46,10 @@ Danach läuft die API standardmäßig unter `http://127.0.0.1:8000`; die React-A
 
 `stack` startet das lokale Backend im Hintergrund und hält den Frontend-Dev-Server im Vordergrund. Termux bleibt absichtlich im CPU-/ARM64-Pfad. Für eine Produktvorschau sollten die erzeugten Passwörter anschließend in einem geeigneten Passwortmanager abgelegt werden.
 
+### Termux-Hinweis
+
+`setup-termux.sh` installiert `pnpm` bei Bedarf über das mit Node.js gelieferte `npm`; ein Paket namens `pnpm` wird in Termux nicht vorausgesetzt. Wenn Node.js bereits vorhanden ist, bleibt es erhalten. Führe daher einfach `bash setup-termux.sh` aus und starte erst danach Backend und Frontend über getrennte Termux-Tabs.
+
 ## TLS-geschützter LAN-Betrieb
 
 LAN-Modus ist kein Direkt-Bindungsmodus. Ein Betreiber stellt zuerst einen TLS-Reverse-Proxy bereit, der Browserzugriffe über eine konkrete HTTPS-Origin akzeptiert und das Backend **lokal** auf `127.0.0.1:8000` erreicht. Frontend und API sollten unter derselben HTTPS-Origin liegen; in diesem Fall setzt ein Produktionsfrontend `VITE_API_BASE_URL=/api/v1`.
