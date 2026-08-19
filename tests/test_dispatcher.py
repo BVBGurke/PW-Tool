@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import time
 import unittest
 
 from backends.base import BackendKind, GenerationRequest, GenerationResult
@@ -14,7 +13,6 @@ from system_mix import SystemMixResult
 class FakeBackend:
     kind: BackendKind
     available: bool
-    delay_seconds: float = 0.0
 
     def is_available(self) -> bool:
         return self.available
@@ -22,7 +20,6 @@ class FakeBackend:
     def generate(self, request: GenerationRequest) -> GenerationResult:
         if not self.available:
             raise RuntimeError("unavailable")
-        time.sleep(self.delay_seconds)
         return GenerationResult([], self.kind, SystemMixResult.disabled())
 
 
@@ -31,12 +28,12 @@ class DispatcherTests(unittest.TestCase):
         self.request = GenerationRequest(
             password_count=128,
             password_length=24,
-            charset=CharacterSet.NORMAL,
+            charset=CharacterSet.COMPLETE,
             iterations=1,
             system_mix_enabled=False,
         )
 
-    def test_unavailable_cuda_uses_cpu(self) -> None:
+    def test_all_visible_profiles_use_cpu_when_cuda_is_unavailable(self) -> None:
         dispatcher = BackendDispatcher(
             cpu_backend=FakeBackend(BackendKind.CPU, True),
             cuda_backend=FakeBackend(BackendKind.CUDA, False),
@@ -45,59 +42,22 @@ class DispatcherTests(unittest.TestCase):
         decision = dispatcher.decide(self.request, BackendPreference.GPU_FIRST)
 
         self.assertEqual(BackendKind.CPU, decision.backend)
-        self.assertIn("unavailable", decision.reason)
+        self.assertIn("direct OS-CSPRNG", decision.reason)
+        self.assertIsNone(decision.calibration_cpu_seconds)
+        self.assertIsNone(decision.calibration_cuda_seconds)
 
-    def test_small_batch_never_pays_gpu_startup_cost(self) -> None:
+    def test_all_visible_profiles_use_cpu_even_when_cuda_is_available(self) -> None:
         dispatcher = BackendDispatcher(
             cpu_backend=FakeBackend(BackendKind.CPU, True),
             cuda_backend=FakeBackend(BackendKind.CUDA, True),
-        )
-        small_request = GenerationRequest(
-            password_count=1,
-            password_length=24,
-            charset=CharacterSet.NORMAL,
-            iterations=1,
-            system_mix_enabled=False,
-        )
-
-        decision = dispatcher.decide(small_request, BackendPreference.GPU_FIRST)
-
-        self.assertEqual(BackendKind.CPU, decision.backend)
-        self.assertIn("below GPU threshold", decision.reason)
-
-    def test_large_batch_uses_cuda_only_after_measured_speedup(self) -> None:
-        dispatcher = BackendDispatcher(
-            cpu_backend=FakeBackend(BackendKind.CPU, True, delay_seconds=0.004),
-            cuda_backend=FakeBackend(BackendKind.CUDA, True, delay_seconds=0.001),
         )
 
         decision = dispatcher.decide(self.request, BackendPreference.GPU_FIRST)
 
-        self.assertEqual(BackendKind.CUDA, decision.backend)
-        self.assertIsNotNone(decision.calibration_cpu_seconds)
-        self.assertIsNotNone(decision.calibration_cuda_seconds)
-
-    def test_maximum_security_profile_bypasses_cuda(self) -> None:
-        dispatcher = BackendDispatcher(
-            cpu_backend=FakeBackend(BackendKind.CPU, True),
-            cuda_backend=FakeBackend(BackendKind.CUDA, True),
-        )
-        request = GenerationRequest(
-            password_count=128,
-            password_length=32,
-            charset=CharacterSet.MAXIMUM,
-            iterations=1,
-            system_mix_enabled=False,
-        )
-
-        decision = dispatcher.decide(request, BackendPreference.GPU_FIRST)
-
         self.assertEqual(BackendKind.CPU, decision.backend)
-        self.assertIn("OS-CSPRNG", decision.reason)
-        self.assertIsNone(decision.calibration_cpu_seconds)
-        self.assertIsNone(decision.calibration_cuda_seconds)
+        self.assertIn("direct OS-CSPRNG", decision.reason)
 
-    def test_cpu_only_profile_bypasses_cuda(self) -> None:
+    def test_legacy_preference_does_not_change_visible_randomness_path(self) -> None:
         dispatcher = BackendDispatcher(
             cpu_backend=FakeBackend(BackendKind.CPU, True),
             cuda_backend=FakeBackend(BackendKind.CUDA, True),
@@ -106,7 +66,7 @@ class DispatcherTests(unittest.TestCase):
         decision = dispatcher.decide(self.request, BackendPreference.CPU_ONLY)
 
         self.assertEqual(BackendKind.CPU, decision.backend)
-        self.assertEqual("CPU-only profile selected", decision.reason)
+        self.assertIn("direct OS-CSPRNG", decision.reason)
 
 
 if __name__ == "__main__":

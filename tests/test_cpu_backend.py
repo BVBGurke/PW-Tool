@@ -34,7 +34,7 @@ class CpuBackendTests(unittest.TestCase):
             )
         )
 
-    def test_cpu_backend_generates_valid_batch_and_reports_phases(self) -> None:
+    def test_cpu_backend_generates_direct_policy_batch_and_reports_phase(self) -> None:
         result = CpuBackend().generate(
             GenerationRequest(
                 password_count=3,
@@ -54,7 +54,8 @@ class CpuBackendTests(unittest.TestCase):
                 for password in result.passwords
             )
         )
-        self.assertEqual({"system_mix", "cpu_pbkdf2", "password_derivation"}, set(result.phase_seconds))
+        self.assertEqual({"os_csprng_password_generation"}, set(result.phase_seconds))
+        self.assertEqual("disabled", result.system_mix.status.value)
 
 
 if __name__ == "__main__":

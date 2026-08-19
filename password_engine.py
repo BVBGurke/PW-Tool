@@ -1,9 +1,10 @@
-"""Sichere Passwortableitung und OS-CSPRNG-basierte Hochsicherheitsausgabe.
+"""Sichere Passwortableitung und direkte OS-CSPRNG-Policy-Erzeugung.
 
-Der allgemeine Generator leitet Passwörter aus Entropiematerial mit HMAC-SHA-512
-und Rejection Sampling ab. Das Hochsicherheitsprofil nutzt ausschließlich den
-Betriebssystem-CSPRNG für jedes Zeichen, garantiert typische Zeichenklassen und
-mischt ihre Positionen per CSPRNG-basiertem Fisher-Yates-Shuffle.
+Die sichtbaren Textual-Formate verwenden eine gemeinsame, auditierbare Policy:
+OS-CSPRNG, Rejection Sampling, garantierte Zeichenklassen und einen
+CSPRNG-basierten Fisher-Yates-Shuffle. Die historisch deterministische
+HMAC-Ableitung bleibt für interne Kompatibilitätstests erhalten, ist aber kein
+sichtbarer interaktiver Pfad mehr.
 """
 
 from __future__ import annotations
@@ -17,11 +18,11 @@ from typing import Callable
 
 
 class CharacterSet(Enum):
-    """Verfügbare Zeichensätze und klar benannte Sicherheitsprofile."""
+    """Verfügbare Zeichenauswahlen für sichere Passwort-Policies."""
 
     NORMAL = "normal"
     COMPLETE = "complete"
-    MAXIMUM = "maximum"
+    MAXIMUM = "maximum"  # Interne Rückwärtskompatibilitätsbezeichnung für COMPLETE.
 
 
 MIN_PASSWORD_LENGTH = 16
@@ -30,7 +31,7 @@ RandomBytes = Callable[[int], bytes]
 
 
 class PasswordGenerator:
-    """Leitet Passwörter lokal und effizient aus sicherem Entropiematerial ab."""
+    """Erzeugt lokale Passwörter aus sicheren, nachvollziehbaren Zufallspfaden."""
 
     CHARS_NORMAL = string.ascii_letters + string.digits
     CHARS_COMPLETE = string.ascii_letters + string.digits + "!@#$%^&*()-_=+[]{}"
@@ -48,14 +49,14 @@ class PasswordGenerator:
 
     @staticmethod
     def get_character_set(charset: CharacterSet) -> str:
-        """Gibt die Zeichen des gewählten Zeichensatzes zurück."""
+        """Gibt das zulässige Alphabet der gewählten Policy zurück."""
         if charset in (CharacterSet.COMPLETE, CharacterSet.MAXIMUM):
             return PasswordGenerator.CHARS_COMPLETE
         return PasswordGenerator.CHARS_NORMAL
 
     @staticmethod
     def _random_block(random_bytes: RandomBytes, size: int) -> bytes:
-        """Liest genau ``size`` Bytes aus einer für Tests austauschbaren CSPRNG-Quelle."""
+        """Liest genau ``size`` Bytes aus einer testbar austauschbaren CSPRNG-Quelle."""
         block = random_bytes(size)
         if len(block) != size:
             raise ValueError("Random byte source returned an unexpected byte count")
@@ -93,35 +94,63 @@ class PasswordGenerator:
             values[index], values[swap_index] = values[swap_index], values[index]
 
     @classmethod
-    def generate_maximum(
+    def _required_groups(cls, charset: CharacterSet) -> tuple[str, ...]:
+        """Gibt die Zeichenklassen zurück, die pro Passwort garantiert werden."""
+        base_groups = (cls._LOWERCASE, cls._UPPERCASE, cls._DIGITS)
+        if charset in (CharacterSet.COMPLETE, CharacterSet.MAXIMUM):
+            return (*base_groups, cls._SPECIALS)
+        return base_groups
+
+    @classmethod
+    def generate_policy(
         cls,
         length: int,
+        charset: CharacterSet = CharacterSet.COMPLETE,
         *,
         random_bytes: RandomBytes = os.urandom,
     ) -> str:
-        """Erzeugt ein maximales Zufallspasswort ohne deterministischen Nebenpfad.
+        """Erzeugt ein Passwort direkt aus dem OS-CSPRNG nach einer Klassen-Policy.
 
-        Die vier ersten Zeichen werden einzeln aus Kleinbuchstaben, Großbuchstaben,
-        Ziffern und Sonderzeichen gezogen. Danach ergänzt das vollständige Alphabet
-        die gewünschte Länge. Ein CSPRNG-basierter Fisher-Yates-Shuffle verdeckt die
-        ursprünglichen Klassenpositionen.
+        Für `normal` sind Kleinbuchstabe, Großbuchstabe und Ziffer garantiert.
+        Für `complete` kommt ein Sonderzeichen hinzu. Alle restlichen Zeichen
+        werden aus dem vollständigen gewählten Alphabet gezogen und anschließend
+        CSPRNG-basiert gemischt.
         """
         if not cls.validate_length(length):
             raise ValueError(
                 f"Length must be {MIN_PASSWORD_LENGTH}-{MAX_PASSWORD_LENGTH}, got {length}"
             )
 
-        password = [
-            cls._uniform_characters(cls._LOWERCASE, 1, random_bytes)[0],
-            cls._uniform_characters(cls._UPPERCASE, 1, random_bytes)[0],
-            cls._uniform_characters(cls._DIGITS, 1, random_bytes)[0],
-            cls._uniform_characters(cls._SPECIALS, 1, random_bytes)[0],
-        ]
-        password.extend(
-            cls._uniform_characters(cls.CHARS_COMPLETE, length - len(password), random_bytes)
-        )
+        groups = cls._required_groups(charset)
+        password = [cls._uniform_characters(group, 1, random_bytes)[0] for group in groups]
+        alphabet = cls.get_character_set(charset)
+        password.extend(cls._uniform_characters(alphabet, length - len(password), random_bytes))
         cls._fisher_yates_shuffle(password, random_bytes)
         return "".join(password)
+
+    @classmethod
+    def generate_policy_batch(
+        cls,
+        count: int,
+        length: int,
+        charset: CharacterSet = CharacterSet.COMPLETE,
+        *,
+        random_bytes: RandomBytes = os.urandom,
+    ) -> list[str]:
+        """Erzeugt einen Batch unabhängiger CSPRNG-Policy-Passwörter."""
+        if count < 1:
+            raise ValueError("Count must be >= 1")
+        return [cls.generate_policy(length, charset, random_bytes=random_bytes) for _ in range(count)]
+
+    @classmethod
+    def generate_maximum(
+        cls,
+        length: int,
+        *,
+        random_bytes: RandomBytes = os.urandom,
+    ) -> str:
+        """Kompatibilitätswrapper für die vollständige CSPRNG-Policy."""
+        return cls.generate_policy(length, CharacterSet.COMPLETE, random_bytes=random_bytes)
 
     @classmethod
     def generate_maximum_batch(
@@ -131,10 +160,8 @@ class PasswordGenerator:
         *,
         random_bytes: RandomBytes = os.urandom,
     ) -> list[str]:
-        """Erzeugt einen Batch unabhängiger Hochsicherheits-Passwörter."""
-        if count < 1:
-            raise ValueError("Count must be >= 1")
-        return [cls.generate_maximum(length, random_bytes=random_bytes) for _ in range(count)]
+        """Kompatibilitätswrapper für vollständige CSPRNG-Policy-Batches."""
+        return cls.generate_policy_batch(count, length, CharacterSet.COMPLETE, random_bytes=random_bytes)
 
     @staticmethod
     def generate(
@@ -142,15 +169,7 @@ class PasswordGenerator:
         length: int,
         charset: CharacterSet = CharacterSet.NORMAL,
     ) -> str:
-        """Leitet ein Passwort per HMAC-SHA-512 und Rejection Sampling ab.
-
-        Das Verfahren vermeidet die Modulo-Verzerrung von ``byte % alphabet``.
-        Entropie wird vollständig in der HMAC-Schlüsselposition verwendet, daher
-        wirkt sich eine Änderung im Systemmix auf das resultierende Passwort aus.
-        Das Hochsicherheitsprofil verwendet stattdessen bewusst ``generate_maximum``.
-        """
-        if charset is CharacterSet.MAXIMUM:
-            return PasswordGenerator.generate_maximum(length)
+        """Leitet für interne Kompatibilität per HMAC-SHA-512 ein Passwort ab."""
         if not PasswordGenerator.validate_length(length):
             raise ValueError(
                 f"Length must be {MIN_PASSWORD_LENGTH}-{MAX_PASSWORD_LENGTH}, got {length}"
@@ -187,11 +206,9 @@ class PasswordGenerator:
         length: int,
         charset: CharacterSet = CharacterSet.NORMAL,
     ) -> list[str]:
-        """Leitet für jeden Batch-Eintrag einen getrennten Entropieseed ab."""
+        """Leitet für interne Kompatibilität getrennte Werte aus einem Seed ab."""
         if count < 1:
             raise ValueError("Count must be >= 1")
-        if charset is CharacterSet.MAXIMUM:
-            return PasswordGenerator.generate_maximum_batch(count, length)
 
         passwords = []
         for index in range(count):
@@ -201,16 +218,15 @@ class PasswordGenerator:
                 + index.to_bytes(8, "big")
             ).digest()
             passwords.append(PasswordGenerator.generate(unique_entropy, length, charset))
-
         return passwords
 
 
 def parse_charset_input(choice: str) -> CharacterSet:
-    """Parst die CLI-Auswahl für einen Zeichensatz oder ein Sicherheitsprofil."""
+    """Parst eine der zwei sichtbaren Zeichenauswahlen oder das Legacy-Profil."""
     choice_lower = choice.lower().strip()
-    if choice_lower in ("1", "normal"):
+    if choice_lower in ("1", "normal", "compatible"):
         return CharacterSet.NORMAL
-    if choice_lower in ("2", "complete"):
+    if choice_lower in ("2", "complete", "full"):
         return CharacterSet.COMPLETE
     if choice_lower in ("3", "maximum", "secure"):
         return CharacterSet.MAXIMUM

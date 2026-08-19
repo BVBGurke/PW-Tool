@@ -21,6 +21,7 @@ py-modules = [
     "cuda_engine",
     "diagnostics",
     "dispatcher",
+    "hash_demo",
     "password_engine",
     "profiles",
     "pw",

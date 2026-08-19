@@ -66,7 +66,7 @@ def _conservative_entropy_bits(
     charset: CharacterSet,
 ) -> float:
     """Berechnet eine konservative Untergrenze für die Generator-Konstruktion."""
-    if charset is not CharacterSet.MAXIMUM:
+    if charset not in (CharacterSet.COMPLETE, CharacterSet.MAXIMUM):
         return minimum_length * math.log2(alphabet_size)
 
     required_classes = (
