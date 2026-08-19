@@ -193,10 +193,11 @@ class PwToolTextualApp(App[None]):
                     yield Label("Zeichensatz")
                     yield Select(
                         [
-                            ("Standard: Buchstaben + Ziffern", CharacterSet.NORMAL.value),
+                            ("Empfohlen: maximal zufällig + alle Zeichenklassen", CharacterSet.MAXIMUM.value),
+                            ("Kompatibel: Buchstaben + Ziffern", CharacterSet.NORMAL.value),
                             ("Vollständig: zusätzlich Sonderzeichen", CharacterSet.COMPLETE.value),
                         ],
-                        value=CharacterSet.NORMAL.value,
+                        value=CharacterSet.MAXIMUM.value,
                         allow_blank=False,
                         id="charset",
                     )
@@ -208,7 +209,7 @@ class PwToolTextualApp(App[None]):
                     yield Label("Lokaler Zusatzmix")
                     yield Checkbox(
                         "Feste, nicht sensible Systemdateien hashen",
-                        value=True,
+                        value=False,
                         id="system-mix",
                     )
                 with Vertical(classes="field"):
@@ -232,6 +233,7 @@ class PwToolTextualApp(App[None]):
 
     def on_mount(self) -> None:
         self._apply_layout_scale(self.size.width)
+        self._apply_charset_profile(CharacterSet.MAXIMUM)
         self.query_one("#password-length", Input).focus()
 
     def on_resize(self, event: Resize) -> None:
@@ -239,6 +241,29 @@ class PwToolTextualApp(App[None]):
 
     def _apply_layout_scale(self, width: int) -> None:
         self.screen.set_class(width < self.COMPACT_WIDTH, "compact")
+
+    def on_select_changed(self, event: Select.Changed) -> None:
+        """Aktualisiert die verfügbaren Optionen beim Wechsel des Sicherheitsprofils."""
+        if event.select.id != "charset":
+            return
+        self._apply_charset_profile(CharacterSet(str(event.value)))
+
+    def _apply_charset_profile(self, charset: CharacterSet) -> None:
+        """Hält das Hochsicherheitsprofil auf dem direkten OS-CSPRNG-Pfad."""
+        is_maximum = charset is CharacterSet.MAXIMUM
+        system_mix = self.query_one("#system-mix", Checkbox)
+        extra_kdf = self.query_one("#extra-kdf", Checkbox)
+        if is_maximum:
+            system_mix.value = False
+            extra_kdf.value = False
+            system_mix.disabled = True
+            extra_kdf.disabled = True
+            self.query_one("#status", Static).update(
+                "[green]Hochsicherheitsprofil: direkter OS-CSPRNG-Pfad mit allen Zeichenklassen.[/green]"
+            )
+        else:
+            system_mix.disabled = False
+            extra_kdf.disabled = False
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "generate":

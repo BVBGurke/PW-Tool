@@ -6,7 +6,7 @@ from time import perf_counter
 
 from backends.base import BackendKind, GenerationRequest, GenerationResult
 from cuda_engine import get_cuda_engine
-from password_engine import PasswordGenerator
+from password_engine import CharacterSet, PasswordGenerator
 from system_mix import collect_system_mix
 
 
@@ -37,6 +37,8 @@ class CudaBackend:
         return self._engine.error_msg
 
     def generate(self, request: GenerationRequest) -> GenerationResult:
+        if request.charset is CharacterSet.MAXIMUM:
+            raise RuntimeError("Maximum-security profile requires the direct OS-CSPRNG CPU path")
         if not self.is_available():
             raise RuntimeError("CUDA backend is unavailable")
 

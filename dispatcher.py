@@ -10,6 +10,7 @@ from typing import Optional
 from backends.base import BackendKind, GenerationRequest, GenerationResult
 from backends.cpu import CpuBackend
 from backends.cuda import CudaBackend
+from password_engine import CharacterSet
 
 
 class BackendPreference(str, Enum):
@@ -44,6 +45,11 @@ class BackendDispatcher:
         self._calibration: Optional[BackendDecision] = None
 
     def decide(self, request: GenerationRequest, preference: BackendPreference) -> BackendDecision:
+        if request.charset is CharacterSet.MAXIMUM:
+            return BackendDecision(
+                BackendKind.CPU,
+                "Maximum-security profile uses direct OS-CSPRNG on the CPU",
+            )
         if preference is BackendPreference.CPU_ONLY:
             return BackendDecision(BackendKind.CPU, "CPU-only profile selected")
         if not self.cuda_backend.is_available():

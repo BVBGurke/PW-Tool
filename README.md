@@ -34,11 +34,13 @@ Beim Start zeigt PW-Tool ein Textual-Formular. Passwortlänge, Anzahl, Zeichensa
 |---|---:|---|
 | Passwortlänge | 64 | Erlaubt sicherheitsorientiert nur Werte von 16 bis 256 Zeichen. |
 | Anzahl | 1 | Erlaubt 1 bis 10.000 Passwörter pro Lauf. |
-| Zeichensatz | `normal` | Wählt den Zeichenvorrat der Passwortableitung. |
-| CUDA als Kandidat | Aktiv | Prüft CUDA für große Batches; der sichere CPU-/ARM64-Fallback bleibt verfügbar. |
+| Sicherheitsprofil | `maximum` | **Empfohlen:** direkter OS-CSPRNG, vollständiger Zeichenvorrat und garantierte Zeichenklassen. |
+| Kompatibles Profil | `normal` | Buchstaben und Ziffern für restriktive Dienste. |
+| Vollständiges Profil | `complete` | Buchstaben, Ziffern und Sonderzeichen ohne Klassen-Garantie. |
+| CUDA als Kandidat | Aktiv | Prüft CUDA nur für die kompatiblen Profile; das Hochsicherheitsprofil bleibt auf dem CPU-OS-CSPRNG-Pfad. |
 | Ergebnis-Metriken | Inaktiv | Zeigt nur nicht sensitive Phasenzeiten in der Ergebnisansicht. |
-| Systemmischung | Aktiv | Aktiviert die dokumentierte, optionale lokale Zusatzmischung. |
-| Zusätzliche KDF-Arbeit | Inaktiv | Erhöht die lokale Rechenarbeit bewusst und kann die Laufzeit verlängern. |
+| Systemmischung | Inaktiv | Optional für kompatible Profile; im Hochsicherheitsprofil bewusst deaktiviert. |
+| Zusätzliche KDF-Arbeit | Inaktiv | Optional für kompatible Profile; erhöht Rechenzeit, aber nicht die Zufallsentropie. |
 | Sicherheitscheck | Nach Erzeugung verfügbar | Bewertet nur lokale, nicht sensitive Merkmale des jüngsten Batches. |
 | Ergebnisse löschen | Nach Erzeugung verfügbar | Entfernt die letzte Ausgabe aus sichtbaren Widgets und dem App-Zustand. |
 
@@ -58,9 +60,9 @@ Bei einer Terminalbreite unter 72 Zeichen schaltet die Textual-Oberfläche auf e
 
 ### Passwort-Sicherheitscheck
 
-Der Check verarbeitet ausschließlich die zuletzt lokal erzeugten Werte. Er zeigt **keine Passwortwerte** an und speichert, protokolliert oder überträgt nichts. Stattdessen bewertet er Anzahl, kürzeste Länge, Größe des gewählten Zeichenvorrats, eine theoretische Entropieschätzung, Zeichenklassen und Duplikate. Die Schätzung setzt den lokalen Zufallsgenerator und einen nicht wiederverwendeten Wert voraus; sie prüft weder externe Datenlecks noch die Sicherheit eines Zielservices.
+Der Check verarbeitet ausschließlich die zuletzt lokal erzeugten Werte. Er zeigt **keine Passwortwerte** an und speichert, protokolliert oder überträgt nichts. Stattdessen bewertet er Profil, Anzahl, kürzeste Länge, Größe des gewählten Zeichenvorrats, eine theoretische Entropieschätzung, Zeichenklassen und Duplikate. Die Schätzung setzt den lokalen Zufallsgenerator und einen nicht wiederverwendeten Wert voraus; sie prüft weder externe Datenlecks noch die Sicherheit eines Zielservices.
 
-PW-Tool erzeugt seine Ausgangsentropie mit dem Betriebssystem-Zufallsgenerator, nutzt HMAC-SHA-512 mit Rejection Sampling und akzeptiert nur Längen ab **16 Zeichen**. Die zusätzliche KDF-Arbeit erhöht die Rechenzeit, aber nicht die Zufallsentropie. Ergebnisse löschen entfernt sie aus der Oberfläche und dem App-Zustand; das ist keine Zusage für ein forensisch sicheres Überschreiben des Prozessspeichers. [4] [5]
+Das empfohlene Profil `maximum` verwendet für jedes Passwort ausschließlich den Betriebssystem-Zufallsgenerator. Es zieht mindestens je einen Kleinbuchstaben, Großbuchstaben, eine Ziffer und ein Sonderzeichen, ergänzt die übrigen Zeichen aus dem vollständigen Zeichenvorrat und mischt alle Positionen per CSPRNG-basiertem Fisher-Yates-Shuffle. Es nutzt absichtlich weder CUDA, lokale Dateimischung noch zusätzliche KDF-Arbeit. PW-Tool akzeptiert nur Längen ab **16 Zeichen**. Die allgemeine Ableitung nutzt HMAC-SHA-512 mit Rejection Sampling; zusätzliche KDF-Arbeit erhöht nur die Rechenzeit, nicht die Zufallsentropie. Ergebnisse löschen entfernt sie aus der Oberfläche und dem App-Zustand; das ist keine Zusage für ein forensisch sicheres Überschreiben des Prozessspeichers. [5] [7]
 
 ## CUDA: aktueller Sicherheits- und Performance-Status
 
@@ -152,7 +154,7 @@ cpu_engine.py            OS-CSPRNG, Systemmix und CPU-PBKDF2
 cuda_engine.py           CUDA-Detection und getrennte Diagnosephasen
 system_mix.py            Lokale feste Zusatzmischung
 audit/                   Architektur-Baseline und GitHub-Gem-Bewertung
-tests/                   Dispatcher-, Logger-, Backend-, Benchmark-, Sicherheits- und Textual-Tests
+tests/                   Dispatcher-, Logger-, Backend-, Benchmark-, Hochsicherheits- und Textual-Tests
 ```
 
 ## Verifizierungsgrenzen
@@ -172,3 +174,5 @@ Die im Repository vorhandene Linux-x86-64-CPU wurde getestet. Eine RTX 4070 SUPE
 [5] [Python documentation: `hashlib`](https://docs.python.org/3/library/hashlib.html)
 
 [6] [Textual – Python framework for terminal user interfaces](https://textual.textualize.io/)
+
+[7] [Python documentation: `os.urandom`](https://docs.python.org/3/library/os.html#os.urandom)

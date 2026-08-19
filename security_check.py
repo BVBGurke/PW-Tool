@@ -17,6 +17,7 @@ from password_engine import CharacterSet, PasswordGenerator
 class PasswordSecurityReport:
     """Nicht sensibles Ergebnis einer lokalen Passwort-Sicherheitsbewertung."""
 
+    profile_name: str
     password_count: int
     minimum_length: int
     alphabet_size: int
@@ -33,6 +34,7 @@ class PasswordSecurityReport:
         return "\n".join(
             (
                 "Sicherheitscheck (nur lokal)",
+                f"Profil: {self.profile_name}",
                 f"Passwörter: {self.password_count}; kürzeste Länge: {self.minimum_length}",
                 f"Zeichenvorrat: {self.alphabet_size} Zeichen; geschätzt: ca. {self.estimated_entropy_bits:.0f} Bit",
                 f"Zeichenklassen je Passwort vorhanden: {class_status}; unterschiedliche Werte: {distinct_status}",
@@ -93,7 +95,16 @@ def assess_generated_passwords(
     if not all_distinct:
         advice = "Der Batch enthält gleiche Werte; bitte neue Passwörter erzeugen."
 
+    profile_name = (
+        "maximal zufällig (direkter OS-CSPRNG)"
+        if charset is CharacterSet.MAXIMUM
+        else "vollständiger Zeichenvorrat"
+        if charset is CharacterSet.COMPLETE
+        else "kompatibler Zeichenvorrat"
+    )
+
     return PasswordSecurityReport(
+        profile_name=profile_name,
         password_count=len(passwords),
         minimum_length=minimum_length,
         alphabet_size=alphabet_size,

@@ -77,6 +77,26 @@ class DispatcherTests(unittest.TestCase):
         self.assertIsNotNone(decision.calibration_cpu_seconds)
         self.assertIsNotNone(decision.calibration_cuda_seconds)
 
+    def test_maximum_security_profile_bypasses_cuda(self) -> None:
+        dispatcher = BackendDispatcher(
+            cpu_backend=FakeBackend(BackendKind.CPU, True),
+            cuda_backend=FakeBackend(BackendKind.CUDA, True),
+        )
+        request = GenerationRequest(
+            password_count=128,
+            password_length=32,
+            charset=CharacterSet.MAXIMUM,
+            iterations=1,
+            system_mix_enabled=False,
+        )
+
+        decision = dispatcher.decide(request, BackendPreference.GPU_FIRST)
+
+        self.assertEqual(BackendKind.CPU, decision.backend)
+        self.assertIn("OS-CSPRNG", decision.reason)
+        self.assertIsNone(decision.calibration_cpu_seconds)
+        self.assertIsNone(decision.calibration_cuda_seconds)
+
     def test_cpu_only_profile_bypasses_cuda(self) -> None:
         dispatcher = BackendDispatcher(
             cpu_backend=FakeBackend(BackendKind.CPU, True),

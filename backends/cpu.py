@@ -6,8 +6,8 @@ from time import perf_counter
 
 from backends.base import BackendKind, GenerationRequest, GenerationResult
 from cpu_engine import get_cpu_engine
-from password_engine import PasswordGenerator
-from system_mix import collect_system_mix
+from password_engine import CharacterSet, PasswordGenerator
+from system_mix import SystemMixResult, collect_system_mix
 
 
 class CpuBackend:
@@ -30,6 +30,21 @@ class CpuBackend:
 
     def generate(self, request: GenerationRequest) -> GenerationResult:
         timings: dict[str, float] = {}
+
+        if request.charset is CharacterSet.MAXIMUM:
+            start = perf_counter()
+            passwords = PasswordGenerator.generate_maximum_batch(
+                request.password_count,
+                request.password_length,
+            )
+            timings["os_csprng_password_generation"] = perf_counter() - start
+            return GenerationResult(
+                passwords=passwords,
+                backend=self.kind,
+                system_mix=SystemMixResult.disabled(),
+                phase_seconds=timings,
+                worker_count=1,
+            )
 
         start = perf_counter()
         system_mix = collect_system_mix(enabled=request.system_mix_enabled)

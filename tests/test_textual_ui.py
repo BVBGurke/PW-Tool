@@ -43,6 +43,12 @@ class TextualUiTests(unittest.IsolatedAsyncioTestCase):
         async with app.run_test(size=(40, 28)) as pilot:
             await pilot.pause()
             self.assertTrue(app.screen.has_class("compact"))
+            self.assertEqual(
+                CharacterSet.MAXIMUM.value,
+                str(app.query_one("#charset").value),
+            )
+            self.assertTrue(app.query_one("#system-mix").disabled)
+            self.assertTrue(app.query_one("#extra-kdf").disabled)
             app.action_generate()
             await pilot.pause()
             rendered = str(app.query_one("#results").render())
@@ -56,6 +62,7 @@ class TextualUiTests(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             security_report = str(app.query_one("#security-check").render())
             self.assertIn("Sicherheitscheck (nur lokal)", security_report)
+            self.assertIn("maximal zufällig (direkter OS-CSPRNG)", security_report)
             self.assertNotIn(expected, security_report)
 
             app.action_clear_passwords()
@@ -67,6 +74,16 @@ class TextualUiTests(unittest.IsolatedAsyncioTestCase):
                 "Ergebnisse aus der Oberfläche entfernt.",
                 str(app.query_one("#results").render()),
             )
+
+    async def test_compatible_profiles_reenable_optional_settings(self) -> None:
+        app = self._app()
+
+        async with app.run_test(size=(100, 32)) as pilot:
+            await pilot.pause()
+            app._apply_charset_profile(CharacterSet.NORMAL)
+            await pilot.pause()
+            self.assertFalse(app.query_one("#system-mix").disabled)
+            self.assertFalse(app.query_one("#extra-kdf").disabled)
 
     async def test_invalid_form_prevents_generation(self) -> None:
         app = self._app()
